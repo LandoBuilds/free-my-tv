@@ -533,7 +533,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .box .row .value .sym { width: 26px; height: 26px; vertical-align: -3px; }
 .box .row.dim { color: rgba(255, 255, 255, 0.4); }
 #about .row .value { font-feature-settings: 'tnum'; }
-#citypick .row.field input, #keypick .row.field input {
+#citypick .row.field input, #keypick .row.field input, #albumpick .row.field input {
   width: 100%;
   height: 70px;
   margin: 0;
@@ -545,10 +545,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   font: inherit;
   line-height: 70px;
 }
-#citypick .row.field, #keypick .row.field { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18); }
-#citypick .row.field input::-webkit-input-placeholder, #keypick .row.field input::-webkit-input-placeholder { color: rgba(255, 255, 255, 0.4); }
-#citypick .row.field input::placeholder, #keypick .row.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
-#citypick .row { overflow: hidden; text-overflow: ellipsis; }
+#citypick .row.field, #keypick .row.field, #albumpick .row.field { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18); }
+#citypick .row.field input::-webkit-input-placeholder, #keypick .row.field input::-webkit-input-placeholder, #albumpick .row.field input::-webkit-input-placeholder { color: rgba(255, 255, 255, 0.4); }
+#citypick .row.field input::placeholder, #keypick .row.field input::placeholder, #albumpick .row.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
+#citypick .row, #albumpick .row { overflow: hidden; text-overflow: ellipsis; }
 #about .row .value.cut { overflow: hidden; text-overflow: ellipsis; }
 .box .hint { padding: 14px 18px 0; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
 .box .hint.warn { color: #FFC266; }
@@ -580,8 +580,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 #saver { background: #000; opacity: 0; visibility: hidden; -webkit-transition: opacity 1.2s, visibility 0s 1.2s; transition: opacity 1.2s, visibility 0s 1.2s; }
 #saver.on { opacity: 1; visibility: visible; -webkit-transition-delay: 0s; transition-delay: 0s; }
-#saver .photo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-size: cover; background-position: center; opacity: 0; -webkit-transition: opacity 2.4s, -webkit-transform 24s linear; transition: opacity 2.4s, transform 24s linear; }
+#saver .photo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0; -webkit-transition: opacity 2.4s, -webkit-transform 24s linear; transition: opacity 2.4s, transform 24s linear; }
 #saver .photo.on { opacity: 1; }
+/* The shared album. Fill covers the screen; fit shows the whole photo on black. The clock is smaller than the picks' one. */
+#saver.album.fit .photo { background-size: contain; background-color: #000; }
+#saver.album .clock { bottom: 72px; padding: 18px 32px 20px; border-radius: 32px; }
+#saver.album .clock .time { font-size: 72px; }
+#saver.album .clock .date { margin-top: 6px; font-size: 28px; }
+#saver.album.noclock .clock, #saver.album.noclock .shade { display: none; }
 #saver .shade { position: absolute; left: 0; right: 0; bottom: 0; height: 520px; background: -webkit-linear-gradient(top, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55)); background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55)); }
 #saver .clock {
   position: absolute;

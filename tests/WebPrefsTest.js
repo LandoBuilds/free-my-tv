@@ -76,5 +76,25 @@ expect(prefs({}, {homeButton: true}).homeReturns(), true, 'samsung_home_button f
 expect(prefs({homeReturns: false}, {homeButton: true}).homeReturns(), false, 'turned off on the TV');
 expect(prefs({homeReturns: 'yes'}).homeReturns(), false, 'not a boolean');
 
+expect(prefs({}).icloudAlbum(), '', 'no iCloud album until one is pasted');
+expect(prefs({icloudAlbum: 'https://www.icloud.com/sharedalbum/#B12'}).icloudAlbum(),
+  'https://www.icloud.com/sharedalbum/#B12', 'the album link stays on the TV');
+expect(prefs({}).icloudSaver(), false, 'the album screensaver is off');
+expect(prefs({icloudSaver: true}).icloudSaver(), true, 'the album screensaver is on');
+expect(prefs({icloudSaver: 'yes'}).icloudSaver(), false, 'not a boolean');
+expect(prefs({}).icloudHome(), false, 'the home background is off');
+expect(prefs({icloudHome: true}).icloudHome(), true, 'the home background is on');
+expect(prefs({}).icloudShuffle(), true, 'shuffle until turned off');
+expect(prefs({icloudShuffle: false}).icloudShuffle(), false, 'in order');
+expect(prefs({}).icloudKen(), false, 'a crossfade until slow zoom is picked');
+expect(prefs({icloudTransition: 'ken'}).icloudKen(), true, 'slow zoom');
+expect(prefs({}).icloudFit(), false, 'photos fill the screen');
+expect(prefs({icloudAspect: 'fit'}).icloudFit(), true, 'the whole photo');
+expect(prefs({}).icloudClock(), true, 'a clock on the album');
+expect(prefs({icloudClock: false}).icloudClock(), false, 'no clock');
+expect(prefs({}).icloudInterval(), 10, 'ten seconds');
+expect(prefs({icloudInterval: 30}).icloudInterval(), 30, 'thirty seconds');
+expect(prefs({icloudInterval: 7}).icloudInterval(), 10, 'not one of the steps');
+
 if (failures) process.exit(1);
 console.log('WebPrefsTest: all checks passed.');

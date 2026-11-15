@@ -129,6 +129,25 @@ var Prefs = (function () {
       var c = String(pick('clockFormat', CONFIG.clockFormat));
       return c === '24' || c === '12' ? c : 'auto';
     },
+    /** The iCloud shared album link pasted on the TV (Home Settings). It stays in this file, on the device. */
+    icloudAlbum: function () { return String(pick('icloudAlbum', '') || ''); },
+    /** The screensaver shows that album. Off until it's turned on. */
+    icloudSaver: function () { return pick('icloudSaver', false) === true; },
+    /** The same photos behind the home screen. Off until it's turned on. */
+    icloudHome: function () { return pick('icloudHome', false) === true; },
+    /** Shuffle the album. Off plays it in date order. */
+    icloudShuffle: function () { return pick('icloudShuffle', true) !== false; },
+    /** Slow pan and zoom. Otherwise each photo only fades in. */
+    icloudKen: function () { return pick('icloudTransition', 'fade') === 'ken'; },
+    /** The whole photo, letterboxed. Otherwise it fills the screen and is never stretched. */
+    icloudFit: function () { return pick('icloudAspect', 'fill') === 'fit'; },
+    /** A small clock and the date on the album screensaver. */
+    icloudClock: function () { return pick('icloudClock', true) !== false; },
+    /** How long each photo stays, in seconds: 5, 10, 15, 30 or 60. */
+    icloudInterval: function () {
+      var n = pick('icloudInterval', 10);
+      return n === 5 || n === 15 || n === 30 || n === 60 ? n : 10;
+    },
     set: function (name, value) { v[name] = value; save(); this.version++; },
     setCoin: function (i, on) {
       var c = (pick('coins', null) || [true, true, true, true]).slice();

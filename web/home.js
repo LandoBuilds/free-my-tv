@@ -416,11 +416,11 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ABOUT: 'about'};
-  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ALBUM: 'album', ABOUT: 'about'};
+  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0, album: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ABOUT; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ALBUM || st.zone === Z.ABOUT; }
 
   function updateFocus() {
     var i, list;
@@ -450,6 +450,7 @@
     if (langHint) langHint.textContent = I18N.digits((st.lang + 1) + ' / ' + languageChoices().length) + '  ·  ' + tr('OK picks, Back cancels.');
     focusRows($('citypick'), st.city, st.zone === Z.CITY);
     focusRows($('keypick'), st.key, st.zone === Z.KEY);
+    focusRows($('albumpick'), st.album, st.zone === Z.ALBUM);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
     followSoon();
   }
@@ -568,10 +569,14 @@
 
   var bgUrl = null, bgFront = 'bgA';
 
-  /** The focused pick's photo as the background: drawn tiny and stretched, it's already as soft as a heavy blur. */
-  function backdrop(url) {
-    if (url === bgUrl) return;
-    bgUrl = url;
+  /**
+   * The focused pick's photo as the background: drawn tiny and stretched, it's already as soft as a heavy blur.
+   * `fit` is the album's framing (fill or the whole photo). Without it the picks draw as they always have.
+   */
+  function backdrop(url, fit) {
+    var key = fit === undefined ? url : url + (fit ? '|fit' : '|fill');
+    if (key === bgUrl) return;
+    bgUrl = key;
     var next = bgFront === 'bgA' ? 'bgB' : 'bgA';
     if (!url) {
       setClass($('bgA'), 'on', false);
@@ -580,14 +585,57 @@
     }
     var img = new Image();
     img.onload = function () {
-      if (bgUrl !== url) return;
-      var canvas = $(next), ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      if (bgUrl !== key) return;
+      var canvas = $(next), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+      if (fit === undefined) ctx.drawImage(img, 0, 0, w, h);
+      else {
+        var iw = img.width || 1, ih = img.height || 1;
+        var scale = fit ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+        var dw = iw * scale, dh = ih * scale;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      }
       setClass(canvas, 'on', true);
       setClass($(bgFront), 'on', false);
       bgFront = next;
     };
+    if (fit !== undefined) img.onerror = function () { ICloud.noteBroken(); };
     img.src = url;
+  }
+
+  var homeTimer = 0, homeIndex = 0;
+
+  /** The album, slowly, behind the shelf. The tiny canvas is the blur; the veil on top keeps the tiles readable. */
+  function startAlbumBackground() {
+    if (homeTimer || !Prefs.icloudHome() || !ICloud.count()) return;
+    homeTimer = 1;
+    function step() {
+      if (!Prefs.icloudHome() || !ICloud.count()) { stopAlbumBackground(); return; }
+      var list = ICloud.playlist();
+      if (!list.length) { stopAlbumBackground(); return; }
+      var photo = list[homeIndex % list.length];
+      homeIndex++;
+      backdrop(photo.url, Prefs.icloudFit());
+      // The home screen turns more slowly than the screensaver: at least 15 seconds, so the shelf stays easy to read.
+      homeTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 15) * 1000);
+    }
+    step();
+  }
+
+  function stopAlbumBackground() {
+    clearTimeout(homeTimer);
+    homeTimer = 0;
+    bgUrl = '';
+  }
+
+  /** Framing changed while a photo is already up: draw that photo again the new way. */
+  function redrawAlbumBackground() {
+    if (!Prefs.icloudHome() || !ICloud.count()) return;
+    var list = ICloud.playlist();
+    if (!list.length) return;
+    bgUrl = '';
+    backdrop(list[(homeIndex + list.length - 1) % list.length].url, Prefs.icloudFit());
   }
 
   // As HomeView's bgFollow: the background follows the focused pick.
@@ -596,7 +644,9 @@
   /** The focused pick's photo as the background once the focus has rested on it: a quick run along the row fades once. */
   function followSoon() {
     clearTimeout(bgTimer);
+    if (Prefs.icloudHome() && ICloud.count()) return;
     bgTimer = setTimeout(function () {
+      if (Prefs.icloudHome() && ICloud.count()) return;
       if (cards.length) backdrop(Data.image(cards[Math.min(st.card, cards.length - 1)].backdrop, 'w300'));
     }, BG_FOLLOW_MS);
   }
@@ -875,8 +925,10 @@
     setClass($('about'), 'open', false);
     closeField('citypick');
     closeField('keypick');
+    closeField('albumpick');
     setClass($('citypick'), 'open', false);
     setClass($('keypick'), 'open', false);
+    setClass($('albumpick'), 'open', false);
     langHint = null;
     st.zone = Z.SHELF;
     updateFocus();
@@ -905,6 +957,8 @@
         step: function (d) { cycle('dim', ['off', 'low', 'medium', 'high', 'auto'], Prefs.dim(), d); applyDim(); }},
       {label: tr('Screensaver'), value: saverMode() === 'clock' ? tr('Clock') : tr('Photos'),
         step: function (d) { cycle('saver', ['photos', 'clock'], saverMode(), d); }},
+      {label: tr('iCloud photos'), value: icloudStatus(), opens: true, icloud: true,
+        step: function (d) { if (d >= 0) openAlbum(); }},
       {label: tr('Picks per tab'), value: String(I18N.digits(Prefs.cards())),
         step: function (d) { Prefs.set('cards', 3 + (Prefs.cards() - 3 + (d || 1) + 4) % 4); renderCards(); }},
       {label: tr('Cartoons and anime'), toggle: !Prefs.hideAnimation(),
@@ -1297,6 +1351,189 @@
     else askRemoveKey(true);
   }
 
+  // MARK: - iCloud shared album: the link, and how the screensaver and the home background use it
+
+  var albumRowsNow = [], albumStatus = '', albumWarn = false, albumTimer = 0, albumSeq = 0;
+  var INTERVALS = [5, 10, 15, 30, 60];
+
+  function icloudStatus() {
+    if (!Prefs.icloudAlbum()) return tr('Not set');
+    var err = ICloud.problem();
+    if (err === 'offline') return tr('Offline');
+    if (err === 'empty') return tr('No photos');
+    if (err === 'refused' || err === 'invalid') return tr('Check the link');
+    var title = ICloud.title();
+    if (title.length > 28) title = title.substring(0, 27) + '…';
+    return title || tr('Saved');
+  }
+
+  function icloudHint() {
+    var err = ICloud.problem();
+    if (albumStatus) return albumStatus;
+    if (!Prefs.icloudAlbum()) return '';
+    if (err === 'offline') return tr("Couldn't reach iCloud.");
+    if (err === 'empty') return tr('This album has no photos.');
+    if (err === 'refused' || err === 'invalid') return tr('iCloud refused this link.');
+    return '';
+  }
+
+  function albumSteps() {
+    return tr('On your iPhone, open the shared album, then Sharing Options, Anyone with the Link, and Copy Album Link.');
+  }
+
+  /** The field, Save, Remove when a link is kept, then the way the photos play. */
+  function albumRows() {
+    var rows = [{field: true}, {label: tr('Save'), save: true}];
+    if (Prefs.icloudAlbum()) rows.push({label: tr('Remove the album'), remove: true});
+    rows.push(
+      {label: tr('iCloud screensaver'), toggle: Prefs.icloudSaver(), key: 'icloudSaver'},
+      {label: tr('Home background'), toggle: Prefs.icloudHome(), key: 'icloudHome'},
+      {label: tr('Photo every'), value: trf('{n} seconds', {n: Prefs.icloudInterval()}), interval: true},
+      {label: tr('Shuffle'), toggle: Prefs.icloudShuffle(), key: 'icloudShuffle'},
+      {label: tr('Transition'), value: Prefs.icloudKen() ? tr('Slow zoom') : tr('Crossfade'), transition: true},
+      {label: tr('Framing'), value: Prefs.icloudFit() ? tr('Whole photo') : tr('Fill the screen'), framing: true},
+      {label: tr('Clock'), toggle: Prefs.icloudClock(), key: 'icloudClock'}
+    );
+    return rows;
+  }
+
+  function renderAlbum() {
+    var box = $('albumpick').firstChild, old = fieldOf('albumpick'), typed = old ? old.value : '', inField = typingIn('albumpick');
+    box.innerHTML = '';
+    el('div', 'title', box, tr('iCloud photos'));
+    var list = el('div', 'list', box), holder = el('div', 'rows', list);
+    albumRowsNow = albumRows();
+    list.style.height = Math.min(albumRowsNow.length, 7) * 78 + 'px';
+    for (var i = 0; i < albumRowsNow.length; i++) {
+      var r = albumRowsNow[i], row;
+      if (r.field) {
+        var field = textField(holder, Z.ALBUM, typed, tr('Paste the shared album link'), tr('iCloud photos'));
+        field.setAttribute('autocapitalize', 'none');
+        field.setAttribute('autocorrect', 'off');
+        continue;
+      }
+      row = el('div', 'row', holder, r.label);
+      if (r.toggle !== undefined) setClass(el('div', 'toggle', row), 'on', r.toggle);
+      else if (r.value) {
+        var v = el('span', 'value', row);
+        el('span', 'chev', v, '‹');
+        v.appendChild(document.createTextNode(r.value));
+        el('span', 'chev', v, '›');
+      } else forward(el('span', 'value', row));
+      hover(row, Z.ALBUM, i);
+    }
+    var hint = icloudHint();
+    if (hint) setClass(el('div', 'hint', box, hint), 'warn', albumWarn || (!albumStatus && !!ICloud.problem()));
+    el('div', 'hint steps', box, albumSteps());
+    if (inField) openField('albumpick');
+    updateFocus();
+  }
+
+  function openAlbum() {
+    setClass($('settings'), 'open', false);
+    st.zone = Z.ALBUM;
+    st.album = 0;
+    albumStatus = '';
+    albumWarn = false;
+    $('albumpick').firstChild.innerHTML = '';
+    renderAlbum();
+    setClass($('albumpick'), 'open', true);
+    openField('albumpick');
+  }
+
+  function setAlbumStatus(text, warn) {
+    albumStatus = text;
+    albumWarn = !!warn;
+    clearTimeout(albumTimer);
+    if (text && text !== tr('Checking the album…')) albumTimer = setTimeout(function () {
+      albumStatus = '';
+      if (st.zone === Z.ALBUM) renderAlbum();
+    }, 6000);
+    if (st.zone === Z.ALBUM) renderAlbum();
+  }
+
+  function closeAlbum() {
+    closeField('albumpick');
+    setClass($('albumpick'), 'open', false);
+    albumSeq++;
+    clearTimeout(albumTimer);
+    albumStatus = '';
+    albumWarn = false;
+    var f = fieldOf('albumpick');
+    if (f) f.value = '';
+    openSettings();
+    for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].icloud) st.row = i;
+    updateFocus();
+  }
+
+  function saveAlbum() {
+    var f = fieldOf('albumpick'), typed = f ? f.value : '';
+    closeField('albumpick');
+    if (!typed.replace(/^\s+|\s+$/g, '')) { st.album = 0; openField('albumpick'); updateFocus(); return; }
+    if (!ICloud.parseLink(typed)) { setAlbumStatus(tr("That doesn't look like an iCloud album link."), true); return; }
+    if (albumStatus === tr('Checking the album…')) return;
+    setAlbumStatus(tr('Checking the album…'));
+    var mine = ++albumSeq, previous = Prefs.icloudAlbum(), saverWas = Prefs.icloudSaver();
+    var trimmed = typed.replace(/^\s+|\s+$/g, '');
+    Prefs.set('icloudAlbum', trimmed);
+    if (!previous) Prefs.set('icloudSaver', true);
+    ICloud.sync(function () {
+      if (mine !== albumSeq || st.zone !== Z.ALBUM) return;
+      var err = ICloud.problem();
+      // A link Apple doesn't know is put back, so a typo doesn't replace an album that was working.
+      if (err === 'refused' || err === 'invalid') {
+        Prefs.set('icloudAlbum', previous);
+        Prefs.set('icloudSaver', saverWas);
+        ICloud.sync();
+        setAlbumStatus(tr('iCloud refused this link.'), true);
+        return;
+      }
+      if (f) f.value = '';
+      if (err === 'offline') setAlbumStatus(tr("Couldn't reach iCloud."), true);
+      else if (err === 'empty') setAlbumStatus(tr('This album has no photos.'), true);
+      else setAlbumStatus(tr('Saved. The screensaver can show these photos.'));
+    });
+  }
+
+  function removeAlbum() {
+    Prefs.set('icloudAlbum', '');
+    Prefs.set('icloudSaver', false);
+    Prefs.set('icloudHome', false);
+    stopAlbumBackground();
+    followSoon();
+    ICloud.sync();
+    closeAlbum();
+  }
+
+  function stepAlbum(row, d) {
+    if (row.key) {
+      Prefs.set(row.key, !Prefs[row.key]());
+      if (row.key === 'icloudHome') { if (Prefs.icloudHome()) startAlbumBackground(); else { stopAlbumBackground(); followSoon(); } }
+      if (row.key === 'icloudShuffle') ICloud.reframe();
+      return;
+    }
+    if (row.interval) {
+      var n = Prefs.icloudInterval(), i = INTERVALS.indexOf(n);
+      if (i < 0) i = 1;
+      Prefs.set('icloudInterval', INTERVALS[(i + (d || 1) + INTERVALS.length) % INTERVALS.length]);
+      return;
+    }
+    if (row.transition) { Prefs.set('icloudTransition', Prefs.icloudKen() ? 'fade' : 'ken'); return; }
+    if (row.framing) {
+      Prefs.set('icloudAspect', Prefs.icloudFit() ? 'fill' : 'fit');
+      redrawAlbumBackground();
+    }
+  }
+
+  function activateAlbum() {
+    var row = albumRowsNow[st.album];
+    if (!row) return;
+    if (row.field) openField('albumpick');
+    else if (row.save) saveAlbum();
+    else if (row.remove) removeAlbum();
+    else { stepAlbum(row, 1); renderAlbum(); }
+  }
+
   // MARK: - About this TV: what to quote when reporting a problem, without LG's or Samsung's slow menus
 
   function renderAbout(info) {
@@ -1588,6 +1825,9 @@
       case Z.KEY:
         activateKey();
         return;
+      case Z.ALBUM:
+        activateAlbum();
+        return;
       case Z.ABOUT:
         closeAbout();
         return;
@@ -1665,6 +1905,13 @@
       case Z.KEY:
         if (dy) st.key = Math.max(0, Math.min(keyRows() - 1, st.key + dy));
         break;
+      case Z.ALBUM:
+        if (dy) st.album = Math.max(0, Math.min(albumRowsNow.length - 1, st.album + dy));
+        else if (dx && albumRowsNow[st.album] && !albumRowsNow[st.album].field && !albumRowsNow[st.album].save && !albumRowsNow[st.album].remove) {
+          stepAlbum(albumRowsNow[st.album], dx);
+          renderAlbum();
+        }
+        break;
     }
     updateFocus();
   }
@@ -1681,6 +1928,7 @@
     if (st.zone === Z.LANG) { closeLanguages(false); return; }
     if (st.zone === Z.CITY) { closeCities(false); return; }
     if (st.zone === Z.KEY) { if (keyAsking) askRemoveKey(false); else closeKey(); return; }
+    if (st.zone === Z.ALBUM) { closeAlbum(); return; }
     if (st.zone === Z.ABOUT) { closeAbout(); return; }
     if (sheetOpen()) { closeSheets(); return; }
     if (st.zone === Z.DRAWER) { closeDrawer(); return; }
@@ -1691,7 +1939,7 @@
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
     node.onmouseover = function () {
-      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ABOUT))) return;
+      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ALBUM || zone === Z.ABOUT))) return;
       if (zone === Z.DRAWER && st.zone !== Z.DRAWER) return;
       if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
       if (zone === Z.TOP && index < 3 && !Data.hasKey()) return;   // the tabs are hidden without the picks
@@ -1707,6 +1955,7 @@
       else if (zone === Z.LANG) st.lang = index;
       else if (zone === Z.CITY) st.city = index;
       else if (zone === Z.KEY) st.key = index;
+      else if (zone === Z.ALBUM) st.album = index;
       updateFocus();
     };
     node.onclick = function () { node.onmouseover(); activate(); };
@@ -1765,12 +2014,29 @@
     return Data.showcase().filter(function (p) { return p.backdrop && Data.usable(p.app); });
   }
 
-  function showSaver() {
+  var saverGen = 0;
+
+  /** A picture address safe to put in a CSS url(). Apple's are already escaped; anything odd is skipped. */
+  function cssUrl(url) {
+    if (!url || /["'()\\\s]/.test(url)) return '';
+    return 'url("' + url + '")';
+  }
+
+  function resetSaverChrome() {
+    var s = $('saver');
+    setClass(s, 'album', false);
+    setClass(s, 'fit', false);
+    setClass(s, 'noclock', false);
+  }
+
+  /** The picks' photos, as the screensaver has always shown them. */
+  function showPickSaver() {
     var photos = saverPhotos();
     saverOn = true;
     saverPick = null;
     var s = $('saver');
     s.innerHTML = '';
+    resetSaverChrome();
     var a = el('div', 'photo', s), b = el('div', 'photo', s);
     el('div', 'shade', s);
     var clock = el('div', 'clock', s);
@@ -1805,6 +2071,85 @@
     next();
   }
 
+  /** Where a slow zoom starts and ends. Fill moves further; fit stays gentle so the letterbox isn't cropped away. */
+  function kenAt(index, end, fit) {
+    var odd = index % 2;
+    if (fit) return end ? (odd ? 'scale(1.04) translate(-1%, 0)' : 'scale(1.04) translate(1%, 0)') : 'scale(1)';
+    if (end) return odd ? 'scale(1.06) translate(-2%, -1%)' : 'scale(1.14) translate(1.5%, 1%)';
+    return odd ? 'scale(1.12) translate(1.5%, 1%)' : 'scale(1.06) translate(-1%, -1%)';
+  }
+
+  /** The shared album, full screen: a crossfade, and a slow zoom when that transition is picked. */
+  function showAlbumSaver() {
+    var list = ICloud.playlist();
+    if (!list.length) { showPickSaver(); return; }
+    saverOn = true;
+    saverPick = null;
+    var s = $('saver'), gen = ++saverGen;
+    s.innerHTML = '';
+    setClass(s, 'album', true);
+    setClass(s, 'fit', Prefs.icloudFit());
+    setClass(s, 'noclock', !Prefs.icloudClock());
+    var a = el('div', 'photo', s), b = el('div', 'photo', s);
+    el('div', 'shade', s);
+    var clock = el('div', 'clock', s);
+    el('div', 'time', clock);
+    el('div', 'date', clock);
+    var front = a, index = 0, skips = 0;
+    function fallback() {
+      hideSaver();
+      if (saverMode() === 'clock') showAmbient(); else showPickSaver();
+    }
+    function advance() {
+      if (!saverOn || gen !== saverGen) return;
+      list = ICloud.playlist();
+      if (!list.length) { fallback(); return; }
+      if (index > 0 && index % list.length === 0 && Prefs.icloudShuffle()) ICloud.reshuffle();
+      list = ICloud.playlist();
+      if (!list.length) { fallback(); return; }
+      var photo = list[index % list.length], n = index++;
+      var back = front === a ? b : a;
+      var ken = Prefs.icloudKen(), fit = Prefs.icloudFit(), ms = Prefs.icloudInterval() * 1000;
+      var shown = cssUrl(photo.url);
+      var img = new Image();
+      img.onload = function () {
+        if (!saverOn || gen !== saverGen || !shown) return;
+        skips = 0;
+        back.style.backgroundImage = shown;
+        back.style.webkitTransition = back.style.transition = 'none';
+        back.style.webkitTransform = back.style.transform = ken ? kenAt(n, false, fit) : 'scale(1)';
+        setTimeout(function () {
+          if (!saverOn || gen !== saverGen) return;
+          var fade = 'opacity 1.2s ease' + (ken ? ', -webkit-transform ' + ms + 'ms linear' : '');
+          back.style.webkitTransition = fade;
+          back.style.transition = 'opacity 1.2s ease' + (ken ? ', transform ' + ms + 'ms linear' : '');
+          setClass(back, 'on', true);
+          setClass(front, 'on', false);
+          if (ken) back.style.webkitTransform = back.style.transform = kenAt(n, true, fit);
+          front = back;
+        }, 40);
+      };
+      img.onerror = function () {
+        if (!saverOn || gen !== saverGen) return;
+        ICloud.noteBroken();
+        if (++skips >= list.length) { fallback(); return; }
+        clearTimeout(saverTimer);
+        advance();
+      };
+      saverTimer = setTimeout(advance, ms);
+      tickSaverClock(clock);
+      if (shown) img.src = photo.url;
+      else img.onerror();
+    }
+    setClass(s, 'on', true);
+    advance();
+  }
+
+  function showSaver() {
+    if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+    else showPickSaver();
+  }
+
   function tickSaverClock(clock) {
     var d = new Date();
     clock.firstChild.textContent = formatDate('format|h:mm', d.getTime());
@@ -1813,6 +2158,7 @@
 
   function hideSaver() {
     saverOn = false;
+    saverGen++;
     clearTimeout(saverTimer);
     setClass($('saver'), 'on', false);
   }
@@ -1889,9 +2235,13 @@
    * its Cancel or ↑ ↓ leave the field. Samsung's keyboard sends Done as 65376 and Cancel as 65385. True: handled here.
    */
   function typing(k) {
-    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : '';
+    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : st.zone === Z.ALBUM ? 'albumpick' : '';
     if (!sheet || !typingIn(sheet)) return false;
-    if (k === TV.keys.ok || k === 65376) { if (st.zone === Z.CITY) searchCity(); else saveKey(); }
+    if (k === TV.keys.ok || k === 65376) {
+      if (st.zone === Z.CITY) searchCity();
+      else if (st.zone === Z.KEY) saveKey();
+      else saveAlbum();
+    }
     else if (k === TV.keys.back || k === 27 || k === 65385) { closeField(sheet); updateFocus(); }
     else if (k === TV.keys.up || k === TV.keys.down) { closeField(sheet); move(0, k === TV.keys.up ? -1 : 1); }
     return true;   // anything else types into the field
@@ -1994,7 +2344,15 @@
   I18N.setClock(Prefs.clockFormat());
   checkNight();   // now, from the last forecast: not after the TV lists its apps, with the day look until then
   // LG's screensaver waits only when ours will show: not under a sheet (ours waits there), and not without photos.
-  TV.holdScreenSaver(function () { return !sheetOpen() && (saverMode() === 'clock' || saverPhotos().length > 0); });
+  TV.holdScreenSaver(function () {
+    return !sheetOpen() && (saverMode() === 'clock' || saverPhotos().length > 0 || (Prefs.icloudSaver() && ICloud.count() > 0));
+  });
+  ICloud.onChange(function () {
+    if (st.zone === Z.SETTINGS) renderSettings();
+    if (st.zone === Z.ALBUM && !typingIn('albumpick')) renderAlbum();
+    if (Prefs.icloudHome() && ICloud.count()) startAlbumBackground();
+  });
+  ICloud.boot();
   fit();
   renderTop();
   applyDim();
@@ -2012,7 +2370,13 @@
     // Only on screen: behind another app nobody presses our keys, so idleAt grows old and the screensaver would start
     // there, turning photos every 12 s for nothing while Netflix or YouTube plays.
     if (!document.hidden && !saverOn && !ambientOn && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) {
-      if (saverMode() === 'clock') showAmbient(); else showSaver();
+      if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+      else if (saverMode() === 'clock') showAmbient(); else showSaver();
+    }
+    // New photos, and signed addresses that expire. A failure is asked again sooner than a list that arrived.
+    if (!resting() && Prefs.icloudAlbum() && (Prefs.icloudSaver() || Prefs.icloudHome())) {
+      var wait = ICloud.problem() ? 2 * 60000 : 30 * 60000;
+      if (Date.now() - ICloud.fetchedAt() > wait) ICloud.sync();
     }
     if (saverOn) tickSaverClock($('saver').querySelector('.clock'));
     if (ambientOn) tickAmbient();
