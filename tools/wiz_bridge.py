@@ -104,18 +104,37 @@ def pilot(ip, mac, params):
         sock.close()
 
 
+_remote = None
+
+
+def tv_remote():
+    global _remote
+    if _remote is not None:
+        return _remote
+    from samsungtvws import SamsungTVWS
+    _remote = SamsungTVWS(TV, port=8002)
+    return _remote
+
+
 def send_key(name):
+    global _remote
     if not TV:
         return False
     try:
-        from samsungtvws import SamsungTVWS
+        from samsungtvws import SamsungTVWS  # noqa: F401
     except ImportError:
         return False
     try:
-        SamsungTVWS(TV, port=8002).send_key(name)
+        tv_remote().send_key(name)
         return True
     except Exception:
-        return False
+        _remote = None
+        try:
+            tv_remote().send_key(name)
+            return True
+        except Exception:
+            _remote = None
+            return False
 
 
 def normalize_mac(text):
@@ -211,7 +230,8 @@ def power_state(force=False):
     now = time.time()
     if not force and now - STATE_CACHE['at'] < 2:
         return STATE_CACHE['power']
-    on = port_open(TV, 8001)
+    # The remote keys use 8002. A short miss on 8001 used to look like "off" and send a wake packet.
+    on = port_open(TV, 8002, timeout=1.2) or port_open(TV, 8002, timeout=1.2) or port_open(TV, 8001, timeout=1.2) or api_answers()
     power = 'on' if on else 'off'
     STATE_CACHE['at'] = now
     STATE_CACHE['power'] = power

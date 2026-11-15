@@ -54,10 +54,14 @@ var LiveWeather = (function () {
 
   var FS = [
     'precision mediump float;',
-    'uniform float uTime, uElev, uCover, uRate, uWind, uMove, uFlash, uKind, uNight, uMoon;',
+    'uniform float uTime, uDrift, uElev, uCover, uRate, uWind, uMove, uFlash, uKind, uNight, uMoon, uLite;',
     'uniform vec2 uBolt;',
     'varying vec2 vUv;',
-    'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+    'float hash(vec2 p){',
+    '  p = fract(p * vec2(0.1031, 0.1030));',
+    '  p += dot(p, p.yx + 19.19);',
+    '  return fract(p.x * p.y);',
+    '}',
     'float noise(vec2 p){',
     '  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);',
     '  float a = hash(i); float b = hash(i + vec2(1.0, 0.0));',
@@ -68,8 +72,6 @@ var LiveWeather = (function () {
     '  float v = 0.0; float a = 0.5;',
     '  v += a * noise(p); p *= 2.02; a *= 0.5;',
     '  v += a * noise(p); p *= 2.03; a *= 0.5;',
-    '  v += a * noise(p); p *= 2.01; a *= 0.5;',
-    '  v += a * noise(p); p *= 2.02; a *= 0.5;',
     '  v += a * noise(p);',
     '  return v;',
     '}',
@@ -89,7 +91,7 @@ var LiveWeather = (function () {
     '  return (w * 0.5 + core * 0.75) * along * show;',
     '}',
     'float snowLayer(vec2 uv, float scale, float speed, float soft){',
-    '  vec2 p = vec2(uv.x * scale + sin(uTime * 0.6 + uv.y * 6.0) * 0.08 + uWind * uTime * 0.05, uv.y * scale + uTime * speed);',
+    '  vec2 p = vec2(uv.x * scale + sin(uDrift * 6.28318 + uv.y * 6.0) * 0.08 + uWind * uDrift, uv.y * scale + uDrift * speed * 16.0);',
     '  vec2 id = floor(p); vec2 f = fract(p) - 0.5;',
     '  float h = hash(id);',
     '  f.x += (h - 0.5) * 0.55;',
@@ -112,7 +114,7 @@ var LiveWeather = (function () {
     '  else if (uKind > 2.5) { zenith = mix(zenith, vec3(0.16, 0.2, 0.26), 0.62); horizon = mix(horizon, vec3(0.32, 0.36, 0.4), 0.5); }',
     '  float gy = pow(clamp(uv.y, 0.0, 1.0), 0.65);',
     '  vec3 col = mix(horizon, zenith, gy);',
-    '  vec2 sunP = vec2(0.72 + sin(uTime * 0.05) * 0.02, 0.12 + elev * 0.55);',
+    '  vec2 sunP = vec2(0.72 + sin(uDrift * 6.28318) * 0.02, 0.12 + elev * 0.55);',
     '  vec2 asp = vec2(1.78, 1.0);',
     '  float sd = length((uv - sunP) * asp);',
     '  if (day > 0.2 && uKind < 2.5) {',
@@ -123,7 +125,7 @@ var LiveWeather = (function () {
     '    vec2 sp = uv * vec2(120.0, 68.0);',
     '    vec2 sf = fract(sp) - 0.5;',
     '    float sh = hash(floor(sp));',
-    '    float tw = 0.55 + 0.45 * sin(uTime * 2.2 + sh * 40.0);',
+    '    float tw = 0.55 + 0.45 * sin(uTime * 6.28318 + sh * 6.28318);',
     '    float star = smoothstep(0.08, 0.0, length(sf)) * step(0.992, sh);',
     '    col += vec3(0.9, 0.93, 1.0) * star * tw * uNight;',
     '    vec2 mc = (uv - vec2(0.78, 0.78)) * asp;',
@@ -136,13 +138,12 @@ var LiveWeather = (function () {
     '    col += vec3(0.7, 0.75, 0.9) * exp(-length(mc) * 10.0) * 0.25 * disk;',
     '  }',
     '  vec2 cuv = uv * vec2(1.7, 1.05);',
-    '  float drift = 0.0022 + uMove * 0.026;',
-    '  vec2 farC = cuv + vec2(uTime * drift, 0.0);',
-    '  vec2 nearC = cuv + vec2(uTime * drift * (1.18 + uMove * 0.35), 0.0);',
+    '  vec2 farC = cuv + vec2(uDrift, 0.0);',
+    '  vec2 nearC = cuv + vec2(fract(uDrift * 1.35), 0.0);',
     '  float n1 = fbm(farC * 1.15);',
-    '  float n2 = fbm(nearC * 2.15 + vec2(n1 * 0.55, uTime * (0.003 + uMove * 0.02)));',
-    '  float fine = noise(nearC * 5.4 + vec2(uTime * drift * 1.3, n1));',
-    '  float field = n1 * 0.52 + n2 * 0.36 + fine * 0.12;',
+    '  float n2 = fbm(nearC * 2.15 + vec2(n1 * 0.55, uDrift));',
+    '  float fine = uLite > 0.5 ? 0.0 : noise(nearC * 4.2 + vec2(uDrift, n1));',
+    '  float field = n1 * 0.55 + n2 * 0.45 + fine * 0.12;',
     '  float edge = mix(0.58, 0.33, uCover);',
     '  float band = uKind > 4.5 ? 0.055 : 0.12;',
     '  float clouds = smoothstep(edge, edge + band, field);',
@@ -162,18 +163,18 @@ var LiveWeather = (function () {
     '  col = mix(col, cloudCol, clouds * (0.64 + 0.36 * uCover));',
     '  if (uKind > 1.5 && uKind < 2.5) {',
     '    col = mix(col, vec3(0.55, 0.58, 0.62), 0.62);',
-    '    float fog = fbm(uv * vec2(1.3, 0.4) + vec2(uTime * 0.025, 0.0));',
+    '    float fog = fbm(uv * vec2(1.3, 0.4) + vec2(uDrift, 0.0));',
     '    fog = smoothstep(0.28, 0.75, fog) * (0.55 + (1.0 - uv.y) * 0.45);',
-    '    float fog2 = fbm(uv * vec2(2.4, 0.8) + vec2(-uTime * 0.04, 3.0));',
-    '    float fog3 = fbm(uv * vec2(0.7, 0.25) + vec2(uTime * 0.012, 1.0));',
-    '    fog = max(fog, smoothstep(0.4, 0.85, fog2) * (1.0 - uv.y * 0.35) * 0.75);',
-    '    fog = max(fog, smoothstep(0.35, 0.8, fog3) * 0.55);',
+    '    if (uLite < 0.5) {',
+    '      float fog2 = fbm(uv * vec2(2.4, 0.8) + vec2(uDrift, 3.0));',
+    '      fog = max(fog, smoothstep(0.4, 0.85, fog2) * (1.0 - uv.y * 0.35) * 0.75);',
+    '    }',
     '    col = mix(col, vec3(0.78, 0.80, 0.83), clamp(fog, 0.0, 0.92));',
     '  }',
     '  if ((uKind > 2.5 && uKind < 3.5) || uKind > 4.5) {',
-    '    float pace = 0.9 + uRate * 0.35;',
-    '    float far = rainLayer(uv, 64.0, 0.8 * pace, 0.7, 0.04, 1.3) * 0.08;',
-    '    float mid = rainLayer(uv + vec2(0.41, 0.2), 28.0, 1.05 * pace, 0.78, 0.03, 4.4) * 0.11;',
+    '    float far = rainLayer(uv, 40.0, 1.0, 0.72, 0.045, 1.3) * 0.1;',
+    '    float mid = 0.0;',
+    '    if (uLite < 0.5) mid = rainLayer(uv + vec2(0.37, 0.2), 22.0, 2.0, 0.8, 0.03, 4.4) * 0.12;',
     '    col += vec3(0.72, 0.8, 0.88) * (far + mid);',
     '  }',
     '  if (uKind > 3.5 && uKind < 4.5) {',
@@ -261,8 +262,8 @@ var LiveWeather = (function () {
   var locs = null, glassLocs = null;
   var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
   var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, drawn = 0, anim = 0, lastDt = 0.034;
-  var inits = 0, gapMax = 0, gapSince = 0;
-  var passSec = 0, passWind = 0, passFlash = 0, passMove = 0, elevCache = 0, elevAt = 0;
+  var inits = 0, gapMax = 0, gapSince = 0, holdUntil = 0, shownFade = 1, drawnAt = 0;
+  var passSec = 0, passDrift = 0, passWind = 0, passFlash = 0, passMove = 0, passLite = 0, elevCache = 0, elevAt = 0;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -349,10 +350,13 @@ var LiveWeather = (function () {
     gl.attachShader(p, vs);
     gl.attachShader(p, fsh);
     gl.linkProgram(p);
+    gl.deleteShader(vs);
+    gl.deleteShader(fsh);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
       var log = '';
       try { log = gl.getProgramInfoLog(p) || ''; } catch (e2) {}
       note('link ' + String(log).slice(0, 180));
+      gl.deleteProgram(p);
       return null;
     }
     return p;
@@ -390,20 +394,63 @@ var LiveWeather = (function () {
     try { ctx = fresh.getContext('2d'); } catch (e) { ctx = null; }
   }
 
+  function releaseGL() {
+    if (!gl) return;
+    function kill(p) {
+      if (!p) return;
+      try { gl.deleteProgram(p); } catch (e) {}
+    }
+    kill(prog);
+    kill(copyProg);
+    kill(dropProg);
+    kill(glassProg);
+    if (sceneTex) {
+      try { gl.deleteTexture(sceneTex.tex); gl.deleteFramebuffer(sceneTex.fb); } catch (e2) {}
+    }
+    prog = null;
+    copyProg = null;
+    dropProg = null;
+    glassProg = null;
+    sceneTex = null;
+    target = null;
+  }
+
+  function watchContext() {
+    if (!canvas || canvas._glWatch) return;
+    canvas._glWatch = 1;
+    canvas.addEventListener('webglcontextlost', function (ev) {
+      if (ev.preventDefault) ev.preventDefault();
+      gl = null;
+      prog = null;
+      copyProg = null;
+      dropProg = null;
+      sceneTex = null;
+      running = false;
+      note('context lost');
+    }, false);
+    canvas.addEventListener('webglcontextrestored', function () {
+      note('context restored');
+      gl = null;
+      prog = null;
+      copyProg = null;
+      dropProg = null;
+      sceneTex = null;
+      if (mode === 'off') return;
+      var use = (mode === 'overlay' || mode === 'row') ? 'low' : (forcedQ || quality);
+      if (initGL(use)) loopStart();
+    }, false);
+  }
+
   function initGL(q) {
     if (!canvas) return false;
+    watchContext();
     var spec = sizeFor(q);
     if (gl && prog && canvas.width === spec.w && canvas.height === spec.h && sceneTex && sceneTex.w === spec.w && sceneTex.h === spec.h) return true;
     if (canvas.width !== spec.w || canvas.height !== spec.h) {
+      releaseGL();
       canvas.width = spec.w;
       canvas.height = spec.h;
       gl = null;
-      prog = null;
-      glassProg = null;
-      dropProg = null;
-      copyProg = null;
-      sceneTex = null;
-      target = null;
     }
     if (!gl) {
       // alpha:false: Tizen 6 drops a transparent WebGL canvas, so Home weather never covered the poster.
@@ -423,6 +470,7 @@ var LiveWeather = (function () {
       locs = {
         a: gl.getAttribLocation(prog, 'a'),
         time: gl.getUniformLocation(prog, 'uTime'),
+        drift: gl.getUniformLocation(prog, 'uDrift'),
         elev: gl.getUniformLocation(prog, 'uElev'),
         cover: gl.getUniformLocation(prog, 'uCover'),
         rate: gl.getUniformLocation(prog, 'uRate'),
@@ -432,6 +480,7 @@ var LiveWeather = (function () {
         kind: gl.getUniformLocation(prog, 'uKind'),
         night: gl.getUniformLocation(prog, 'uNight'),
         moon: gl.getUniformLocation(prog, 'uMoon'),
+        lite: gl.getUniformLocation(prog, 'uLite'),
         bolt: gl.getUniformLocation(prog, 'uBolt')
       };
       if (copyProg) {
@@ -691,6 +740,7 @@ var LiveWeather = (function () {
     gl.enableVertexAttribArray(L.a);
     gl.vertexAttribPointer(L.a, 2, gl.FLOAT, false, 0, 0);
     if (L.time) gl.uniform1f(L.time, passSec);
+    if (L.drift) gl.uniform1f(L.drift, passDrift);
     if (L.elev) gl.uniform1f(L.elev, elevNow());
     if (L.cover) gl.uniform1f(L.cover, coverOf(scene.kind));
     if (L.rate) gl.uniform1f(L.rate, scene.kind === 'rain' || scene.kind === 'storm' || scene.kind === 'snow' ? Math.max(scene.rate || 0, 0.35) : 0);
@@ -700,6 +750,7 @@ var LiveWeather = (function () {
     if (L.kind) gl.uniform1f(L.kind, KINDN[scene.kind] || 0);
     if (L.night) gl.uniform1f(L.night, scene.night ? 1 : 0);
     if (L.moon) gl.uniform1f(L.moon, moonPhase(Date.now()));
+    if (L.lite) gl.uniform1f(L.lite, passLite);
     if (L.bolt) gl.uniform2f(L.bolt, boltUv[0], boltUv[1]);
   }
 
@@ -733,7 +784,12 @@ var LiveWeather = (function () {
   function drawGL(sec) {
     var v = drive();
     var w = canvas.width, h = canvas.height;
-    var gust = Math.sin(sec * (0.07 + v * 0.25)) * (0.015 + v * v * 0.4);
+    passSec = anim % 1;
+    if (passSec < 0) passSec += 1;
+    passDrift = (anim * 0.05) % 1;
+    if (passDrift < 0) passDrift += 1;
+    passLite = (mode === 'overlay' || mode === 'row') ? 1 : 0;
+    var gust = Math.sin(passDrift * 6.28318) * (0.015 + v * v * 0.4);
     var sign = Math.sin(((scene.dir || 0) * Math.PI) / 180);
     if (!sign) sign = 1;
     sign = sign < 0 ? -1 : 1;
@@ -744,7 +800,6 @@ var LiveWeather = (function () {
     if (flash > 0.25) flash -= 0.03;
     else if (flash > 0) flash -= 0.012;
     if (flash > 0) flashN = flash > 1 ? 1 : flash;
-    passSec = sec;
     passWind = wind;
     passMove = v;
     passFlash = scene.kind === 'storm' ? flashN : 0;
@@ -824,17 +879,25 @@ var LiveWeather = (function () {
     }
   }
 
-  /** Seconds for the shader. A late timer adds at most one frame, so a stall cannot fling the drops off the glass. */
+  function fadeTo(level) {
+    if (!canvas || shownFade === level) return;
+    shownFade = level;
+    var value = level < 1 ? '0.72' : '1';
+    canvas.style.opacity = value;
+    if (boltCanvas) boltCanvas.style.opacity = value;
+  }
+
+  /** Seconds for the beads. A gap is kept up to a tenth of a second, so a short stall still moves the drops. */
   function stepClock(now) {
-    var dt = 0.034;
+    var dt = 0.016;
     if (frameLast) {
       dt = (now - frameLast) / 1000;
-      if (!(dt > 0) || dt > 0.05) dt = 0.034;
+      if (!(dt > 0)) dt = 0.016;
+      if (dt > 0.1) dt = 0.1;
     }
     frameLast = now;
     lastDt = dt;
     anim += dt;
-    if (anim > 3600) anim -= 3600;
     return anim;
   }
 
@@ -845,10 +908,6 @@ var LiveWeather = (function () {
   }
 
   function schedule(fn) {
-    if (mode === 'overlay' || mode === 'row') {
-      setTimeout(function () { fn(Date.now()); }, 34);
-      return;
-    }
     var again = window.requestAnimationFrame || function (cb) { return setTimeout(function () { cb(Date.now()); }, 32); };
     again(fn);
   }
@@ -858,6 +917,13 @@ var LiveWeather = (function () {
     if (typeof document !== 'undefined' && document.hidden) {
       running = false;
       frameLast = 0;
+      drawnAt = 0;
+      return;
+    }
+    var dim = paused || (holdUntil && Date.now() < holdUntil);
+    fadeTo(dim ? 0.72 : 1);
+    if ((mode === 'overlay' || mode === 'row') && drawnAt && (now - drawnAt) < 30) {
+      schedule(frame);
       return;
     }
     if (frameLast && mode !== 'overlay' && mode !== 'row') {
@@ -904,6 +970,7 @@ var LiveWeather = (function () {
     if (gl && prog) drawGL(sec);
     else if (ctx) draw2d(sec);
     drawn++;
+    drawnAt = now;
     if (boltLife > 0) {
       drawBolt2d();
       boltSeen = true;
@@ -1171,7 +1238,7 @@ var LiveWeather = (function () {
     if (!root) { done(null); return; }
     var key = Prefs.wizToken ? Prefs.wizToken() : '';
     var path = '/weather/radar?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon);
-    var url = root + path + (key ? '&k=' + encodeURIComponent(key) : '');
+    var url = root + path;
     var x = new XMLHttpRequest();
     var over = false;
     x.open('GET', url, true);
@@ -1274,9 +1341,15 @@ var LiveWeather = (function () {
     night: night,
     moonPhase: moonPhase,
     boot: boot,
-    setPaused: function (on) { paused = !!on; if (!paused && mode !== 'off') loopStart(); },
+    setPaused: function (on) {
+      paused = !!on;
+      if (mode !== 'off') loopStart();
+    },
     skipFrame: function () {},
-    hold: function () {},
+    hold: function (ms) {
+      var until = Date.now() + (ms || 0);
+      if (until > holdUntil) holdUntil = until;
+    },
     drawn: function () { return drawn; },
     stats: function () { return {inits: inits, gap: Math.round(gapMax)}; },
     beadCount: beadCount,

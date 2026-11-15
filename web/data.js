@@ -366,7 +366,7 @@ var Data = (function () {
   function refreshWeather() {
     var now = Date.now();
     // The card can wait half an hour. Live weather, while it's on screen, asks again every few minutes.
-    var live = Prefs.saver() === 'live' || Prefs.liveHome() || Prefs.livePhotos();
+    var live = Prefs.saver() === 'live' || Prefs.liveHome() || Prefs.livePhotos() || Prefs.homeShow() === 'weather';
     var every = live ? 5 * 60000 : 30 * 60000;
     if (fetchingWeather || (now - weatherAt < every && now >= weatherAt)) return;
     fetchingWeather = true;

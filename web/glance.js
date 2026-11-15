@@ -70,8 +70,12 @@ var Glance = (function () {
     return best;
   }
 
+  var recentCache = null;
+
   function recent() {
-    try { return JSON.parse(localStorage.getItem(RECENT)) || []; } catch (e) { return []; }
+    if (recentCache) return recentCache;
+    try { recentCache = JSON.parse(localStorage.getItem(RECENT)) || []; } catch (e) { recentCache = []; }
+    return recentCache;
   }
 
   function noteLaunch(id, title) {
@@ -79,6 +83,7 @@ var Glance = (function () {
     var list = recent().filter(function (x) { return x.id !== id; });
     list.unshift({id: id, title: title || id, at: Date.now()});
     if (list.length > 8) list.length = 8;
+    recentCache = list;
     try { localStorage.setItem(RECENT, JSON.stringify(list)); } catch (e) {}
   }
 
@@ -110,25 +115,40 @@ var Glance = (function () {
     return (typeof Prefs !== 'undefined' && Prefs.wizToken) ? Prefs.wizToken() : '';
   }
 
+  var inflight = {};
+
   function request(method, path, body, done) {
     var root = baseUrl();
     if (!root || typeof XMLHttpRequest === 'undefined') { if (done) done(null); return; }
+    var slot = method + ' ' + String(path).split('?')[0];
+    if (inflight[slot]) {
+      try { inflight[slot].abort(); } catch (e0) {}
+      inflight[slot] = null;
+    }
     var x = new XMLHttpRequest();
     var url = root + path;
     var key = token();
-    if (key) url += (path.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(key);
+    inflight[slot] = x;
     x.open(method, url, true);
     x.timeout = 4000;
     try { if (key) x.setRequestHeader('X-Bridge-Token', key); } catch (e) {}
     if (body) try { x.setRequestHeader('Content-Type', 'application/json'); } catch (e2) {}
     x.onreadystatechange = function () {
       if (x.readyState !== 4) return;
+      if (inflight[slot] === x) inflight[slot] = null;
+      if (!x.status) return;
       var parsed = null;
       if (x.status === 200) { try { parsed = JSON.parse(x.responseText); } catch (e3) { parsed = {}; } }
       if (done) done(parsed);
     };
-    x.onerror = x.ontimeout = function () { if (done) done(null); };
-    try { x.send(body ? JSON.stringify(body) : null); } catch (e4) { if (done) done(null); }
+    x.onerror = x.ontimeout = function () {
+      if (inflight[slot] === x) inflight[slot] = null;
+      if (done) done(null);
+    };
+    try { x.send(body ? JSON.stringify(body) : null); } catch (e4) {
+      if (inflight[slot] === x) inflight[slot] = null;
+      if (done) done(null);
+    }
   }
 
   function sendScene(scene, group) {

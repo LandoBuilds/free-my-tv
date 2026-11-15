@@ -132,8 +132,11 @@ var ICloud = (function () {
       p = list[i];
       if (!p || p.mediaAssetType === 'video') continue;
       d = pickDerivative(p.derivatives, target);
+      var homeD = pickDerivative(p.derivatives, 1280);
       if (!d || !p.photoGuid) continue;
-      out.push({id: String(p.photoGuid), checksum: d.checksum, w: d.width, h: d.height,
+      out.push({id: String(p.photoGuid), checksum: d.checksum,
+        homeChecksum: homeD && homeD.checksum !== d.checksum ? homeD.checksum : '',
+        w: d.width, h: d.height,
         date: String(p.dateCreated || p.batchDateCreated || ''),
         caption: String(p.caption || '').replace(/^\s+|\s+$/g, '')});
     }
@@ -253,6 +256,7 @@ var ICloud = (function () {
       bestEdge = 0;
       fallback = null;
       fallbackEdge = 0;
+      var homeBest = null, homeEdge = 0;
       for (key in fields) {
         if (!fields.hasOwnProperty(key)) continue;
         if (key.indexOf('res') !== 0 || key.indexOf('Res') !== key.length - 3) continue;
@@ -269,6 +273,7 @@ var ICloud = (function () {
         url = String(url).replace(/\$\{f\}/g, 'photo.jpg');
         var choice = {url: url, w: width, h: height, edge: edge};
         if (edge >= target && (!best || edge < bestEdge)) { best = choice; bestEdge = edge; }
+        if (edge >= 1280 && (!homeBest || edge < homeEdge)) { homeBest = choice; homeEdge = edge; }
         if (!fallback || edge > fallbackEdge) { fallback = choice; fallbackEdge = edge; }
       }
       choice = best || fallback;
@@ -276,7 +281,9 @@ var ICloud = (function () {
       note = notes[String(rec.recordName || '')] || {};
       if (!note.date) note.date = ckDate(fields);
       if (!note.caption) note.caption = ckCaption(fields);
-      out.push({id: String(rec.recordName || i), url: choice.url, w: choice.w, h: choice.h,
+      out.push({id: String(rec.recordName || i), url: choice.url,
+        home: homeBest && homeBest.url !== choice.url ? homeBest.url : '',
+        w: choice.w, h: choice.h,
         date: note.date || '', caption: note.caption || '', exp: Date.now() + 12 * 3600000});
     }
     return out;
@@ -333,6 +340,10 @@ var ICloud = (function () {
       if (!u || !u.url) continue;
       photos[i].url = u.url;
       photos[i].exp = u.expiry;
+      if (photos[i].homeChecksum) {
+        var homeUrl = urls[photos[i].homeChecksum];
+        if (homeUrl && homeUrl.url) photos[i].home = homeUrl.url;
+      }
       out.push(photos[i]);
     }
     return out;

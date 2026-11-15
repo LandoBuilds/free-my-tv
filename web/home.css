@@ -266,6 +266,7 @@ body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
   right: 80px;
   top: 28px;
   width: 560px;
+  line-height: 1.25;
   text-align: right;
   color: #1D1D1F;
 }
@@ -294,7 +295,7 @@ body.tinted #wash { opacity: 0.34; }
   top: 248px;
   width: 640px;
   text-align: right;
-  z-index: 2;
+  z-index: 4;
   display: none;
 }
 #scenes .scene {
@@ -325,7 +326,7 @@ body.tinted #wash { opacity: 0.34; }
 /* Live TV, HDMI Inputs and Settings sit under the clock, with the name above the focused one. */
 .round {
   position: absolute;
-  top: 176px;
+  top: 208px;
   width: 68px;
   height: 68px;
   border-radius: 34px;

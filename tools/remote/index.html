@@ -79,7 +79,7 @@
   }
   function send(method, path, body, done, timeout) {
     var x = new XMLHttpRequest();
-    var url = path + (path.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(token());
+    var url = path;
     x.open(method, url, true);
     x.timeout = timeout || 8000;
     x.setRequestHeader('X-Bridge-Token', token());
