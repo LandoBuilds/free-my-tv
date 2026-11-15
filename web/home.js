@@ -454,6 +454,7 @@
     focusRows($('textpick'), st.text, st.zone === Z.TEXT);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
     followSoon();
+    reportStatus();
   }
 
   function focusRows(sheet, index, on) {
@@ -1904,6 +1905,7 @@
     return function () {
       lookingUp = '';
       if (typeof Glance !== 'undefined') Glance.noteLaunch(id, name);
+      reportStatus();
       TV.launch(id, params || null, function (ok) {
         if (!ok) toast(trf("Couldn't open {app}.", {app: I18N.name(name || id)}));
       });
@@ -2321,6 +2323,8 @@
       list = ICloud.playlist();
       if (!list.length) { fallback(); return; }
       var photo = list[index % list.length], n = index++;
+      shownPhoto = photo.url || '';
+      reportStatus();
       var back = front === a ? b : a;
       var ken = Prefs.icloudKen(), fit = Prefs.icloudFit(), ms = Prefs.icloudInterval() * 1000;
       var shown = cssUrl(photo.url);
@@ -2359,7 +2363,7 @@
     syncLive();
   }
 
-  var ambientGlass = false, ambientKind = '', calendarAt = 0;
+  var ambientGlass = false, ambientKind = '', calendarAt = 0, shownPhoto = '', statusSig = '';
 
   function showMorning() {
     ambientGlass = true;
@@ -2397,10 +2401,12 @@
   function hideSaver() {
     saverOn = false;
     ambientGlass = false;
+    shownPhoto = '';
     saverGen++;
     clearTimeout(saverTimer);
     setClass($('saver'), 'on', false);
     syncLive();
+    reportStatus();
   }
 
   /** The forecast, as drops and a sky. Full screen when the screensaver is Live weather; otherwise only the drops. */
@@ -2439,6 +2445,7 @@
     setClass($('liveinfo'), 'on', full || row);
     setClass($('liveinfo'), 'tucked', row);
     if (full || over || row) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
+    reportStatus();
   }
 
   function renderLiveInfo() {
@@ -2482,6 +2489,8 @@
       } else {
         var photo = list[homePhotoAt % list.length];
         homePhotoAt++;
+        shownPhoto = photo.url || '';
+        reportStatus();
         var shown = cssUrl(photo.url);
         box.textContent = '';
         if (shown) box.style.backgroundImage = shown;
@@ -2532,6 +2541,7 @@
     ambientTimer = setInterval(tickAmbient, 30000);
     tickAmbient();
     syncLive();
+    reportStatus();
   }
 
   function tickAmbient() {
@@ -2550,12 +2560,47 @@
       'translate(' + Math.round(40 * Math.sin(phase)) + 'px,' + Math.round(26 * Math.sin(2 * phase + 0.7)) + 'px)';
   }
 
+  function reportStatus(force) {
+    if (typeof Glance === 'undefined' || !Prefs.wizUrl() || resting()) return;
+    var view = 'home';
+    if (sheetOpen()) view = 'settings';
+    else if (ambientOn) view = 'ambient';
+    else if (saverOn) view = 'screensaver';
+    var saverType = '';
+    if (saverOn) {
+      var saver = $('saver');
+      if (saver && saver.className.indexOf('album') >= 0) saverType = 'album';
+      else if (LiveWeather.mode() === 'full') saverType = 'live';
+      else saverType = saverMode();
+    }
+    if (view === 'home' && Prefs.homeShow() === 'photos' && shownPhoto) saverType = 'album';
+    else if (view === 'home' && Prefs.homeShow() === 'weather') saverType = 'live';
+    var recent = Glance.recent(), last = recent.length ? recent[0] : null, w = Data.weather;
+    var card = st.zone === Z.CARDS ? cards[st.card] : null;
+    var app = (card && card.resume) ? {name: card.title, title: card.title} : (last ? {name: last.title, title: last.title} : null);
+    var photo = saverType === 'album' ? shownPhoto : '';
+    var sig = view + '|' + (ambientOn ? ambientKind : '') + '|' + saverType + '|' + photo + '|' +
+      (app ? app.name : '') + '|' + (w ? Data.degrees(w.temp) + Data.condition(w.code, w.isDay) : '');
+    if (!force && sig === statusSig) return;
+    statusSig = sig;
+    Glance.pushStatus({
+      at: Date.now(),
+      view: view,
+      ambient: ambientOn ? (ambientKind || '') : '',
+      saver: saverType,
+      photo: photo,
+      weather: w ? {temp: Data.degrees(w.temp), condition: Data.condition(w.code, w.isDay)} : null,
+      app: app
+    });
+  }
+
   function hideAmbient() {
     ambientOn = false;
     ambientKind = '';
     clearInterval(ambientTimer);
     setClass($('ambient'), 'on', false);
     syncLive();
+    reportStatus();
   }
 
   function poke(ok) {
@@ -2719,6 +2764,7 @@
   if (Prefs.icalUrl()) Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
   setInterval(function () {
     if (resting() || !Prefs.wizUrl()) return;
+    reportStatus(true);
     Glance.pullWish(function (w) {
       if (!w) return;
       if ((w.homeShow === 'picks' || w.homeShow === 'weather' || w.homeShow === 'photos') && Prefs.homeShow() !== w.homeShow) {
@@ -2729,7 +2775,7 @@
       if (w.ambient === 'start' && !saverOn && !ambientOn) startScreen();
       if (w.ambient === 'off') { hideSaver(); hideAmbient(); }
     });
-  }, 4000);
+  }, 5000);
   applyHomeContent();
   Data.onChange(function () { if (LiveWeather.mode() !== 'off') pushScene(); });
   fit();
@@ -2759,6 +2805,7 @@
       Glance.loadCalendar(Prefs.icalUrl(), function () { renderGlance(); if (ambientOn) tickAmbient(); });
     }
     if (LiveWeather.mode() !== 'off') { pushScene(); LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude()); }
+    reportStatus();
     // New photos, and signed addresses that expire. A failure is asked again sooner than a list that arrived.
     if (!resting() && Prefs.icloudAlbum() && (Prefs.icloudSaver() || Prefs.icloudHome())) {
       var wait = ICloud.problem() ? 2 * 60000 : 30 * 60000;

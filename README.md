@@ -415,7 +415,7 @@ printf '%s\n' 'choose-a-long-token' > ~/.wiz/token
 python3 tools/wiz_bridge.py --tv 192.168.86.69
 ```
 
-The phone page is `http://<the Mac's address>:8787/`. Add it to the iPhone Home Screen. The token from `~/.wiz/token` is typed once on the phone. On the TV, *Home Settings* → *Lights* gets `http://<the Mac>:8787` and the same token. Movie, Dim, Warm, Bright and All off are on the home screen and in the drawer. A line `group Name` in `bulbs.txt` names the bulbs under it. To start the bridge at login:
+The phone page is `http://<the Mac's address>:8787/`. Add it to the iPhone Home Screen. The token from `~/.wiz/token` is typed once on the phone. The power button turns the TV on with a wake packet, or off with the power key. The first time the TV is on, the Mac learns its hardware address and keeps it in `~/.freemytv-bridge/tv_mac`. You can also pass `--tv-mac aa:bb:cc:dd:ee:ff`. On the TV, *Home Settings* → *Lights* gets `http://<the Mac>:8787` and the same token. While Free My TV is open it tells the bridge what is on screen, and the phone shows that under *Now on TV*. Movie, Dim, Warm, Bright and All off are on the home screen and in the drawer. A line `group Name` in `bulbs.txt` names the bulbs under it. To start the bridge at login:
 
 ```bash
 python3 tools/wiz_bridge.py --install-login --tv 192.168.86.69

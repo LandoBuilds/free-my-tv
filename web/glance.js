@@ -135,6 +135,10 @@ var Glance = (function () {
     request('POST', '/lights/scene', {scene: scene, group: group || ''}, function () {});
   }
 
+  function pushStatus(status) {
+    request('POST', '/tv/status', status, function () {});
+  }
+
   function pullWish(apply) {
     request('GET', '/tv/wish', null, function (body) {
       if (!body || !body.at || body.at === wishAt) return;
@@ -158,6 +162,7 @@ var Glance = (function () {
     tintCss: tintCss,
     mixCss: mixCss,
     sendScene: sendScene,
+    pushStatus: pushStatus,
     pullWish: pullWish,
     nowPlaying: nowPlaying,
     loadCalendar: function (url, done) {

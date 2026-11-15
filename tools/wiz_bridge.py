@@ -13,9 +13,13 @@ from anywhere except this computer. The token is never printed.
 """
 import json
 import os
+import re
 import socket
+import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -26,7 +30,11 @@ TOKEN_FILE = os.path.join(HOME, '.wiz', 'token')
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'remote', 'index.html')
 PORT = int(os.environ.get('WIZ_PORT', '8787'))
 TV = os.environ.get('WIZ_TV', '')
+TV_MAC = os.environ.get('WIZ_TV_MAC', '')
+MAC_FILE = os.path.join(HOME, '.freemytv-bridge', 'tv_mac')
 WISH = {'at': 0}
+STATUS = {}
+STATE_CACHE = {'at': 0.0, 'power': 'off'}
 
 SCENES = {
     'movie': {'state': True, 'dimming': 18, 'temp': 2200},
@@ -108,6 +116,153 @@ def send_key(name):
         return False
 
 
+def normalize_mac(text):
+    compact = re.sub(r'[^0-9a-fA-F]', '', text or '')
+    if len(compact) < 12:
+        return ''
+    pairs = [compact[i:i + 2] for i in range(0, 12, 2)]
+    return ':'.join(p.lower() for p in pairs)
+
+
+def read_mac_file():
+    try:
+        with open(MAC_FILE, encoding='utf-8') as f:
+            return normalize_mac(f.read())
+    except OSError:
+        return ''
+
+
+def write_mac(mac):
+    mac = normalize_mac(mac)
+    if not mac:
+        return
+    os.makedirs(os.path.dirname(MAC_FILE), exist_ok=True)
+    with open(MAC_FILE, 'w', encoding='utf-8') as f:
+        f.write(mac + '\n')
+
+
+def arp_mac(ip):
+    if not ip:
+        return ''
+    try:
+        out = subprocess.check_output(['arp', '-n', ip], stderr=subprocess.DEVNULL, text=True, timeout=3)
+    except Exception:
+        return ''
+    match = re.search(r'([0-9a-fA-F]{1,2}[:-]){5}[0-9a-fA-F]{1,2}', out)
+    return normalize_mac(match.group(0) if match else '')
+
+
+def tv_mac(refresh=False):
+    if TV_MAC:
+        return normalize_mac(TV_MAC)
+    cached = read_mac_file()
+    if cached and not refresh:
+        return cached
+    found = arp_mac(TV)
+    if found:
+        write_mac(found)
+        return found
+    return cached
+
+
+def broadcasts(ip):
+    found = ['255.255.255.255']
+    parts = (ip or '').split('.')
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        found.append('.'.join(parts[:3] + ['255']))
+    return found
+
+
+def wake_on_lan(mac, ip):
+    raw = bytes(int(part, 16) for part in mac.split(':'))
+    packet = b'\xff' * 6 + raw * 16
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    try:
+        for _ in range(5):
+            for dest in broadcasts(ip):
+                for port in (9, 7):
+                    try:
+                        sock.sendto(packet, (dest, port))
+                    except Exception:
+                        pass
+            time.sleep(0.15)
+    finally:
+        sock.close()
+
+
+def port_open(ip, port, timeout=0.4):
+    if not ip:
+        return False
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((ip, port))
+        return True
+    except Exception:
+        return False
+    finally:
+        sock.close()
+
+
+def power_state(force=False):
+    now = time.time()
+    if not force and now - STATE_CACHE['at'] < 2:
+        return STATE_CACHE['power']
+    on = port_open(TV, 8001)
+    power = 'on' if on else 'off'
+    STATE_CACHE['at'] = now
+    STATE_CACHE['power'] = power
+    if on:
+        tv_mac(refresh=True)
+    return power
+
+
+def api_answers():
+    if not TV:
+        return False
+    try:
+        urllib.request.urlopen('http://%s:8001/api/v2/' % TV, timeout=1.5).close()
+        return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:
+        return False
+
+
+def wait_awake(timeout=20):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if api_answers():
+            STATE_CACHE['at'] = time.time()
+            STATE_CACHE['power'] = 'on'
+            tv_mac(refresh=True)
+            return True
+        time.sleep(1)
+    STATE_CACHE['at'] = time.time()
+    STATE_CACHE['power'] = 'off'
+    return False
+
+
+def power_action(action):
+    state = power_state(force=True)
+    if action == 'toggle':
+        action = 'off' if state == 'on' else 'on'
+    if action == 'on':
+        mac = tv_mac(refresh=state == 'on')
+        if not mac:
+            return {'power': state, 'ok': False, 'error': 'no mac'}
+        wake_on_lan(mac, TV)
+        awake = wait_awake(20)
+        return {'power': 'on' if awake else 'off', 'ok': awake}
+    if action == 'off':
+        ok = send_key('KEY_POWER')
+        STATE_CACHE['at'] = time.time()
+        STATE_CACHE['power'] = 'off'
+        return {'power': 'off', 'ok': ok}
+    return {'power': state, 'ok': False, 'error': 'action'}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Status only. The path can carry the token, so it is not written.
@@ -179,6 +334,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/tv/wish':
             self._json(200, WISH)
             return
+        if path == '/tv/state':
+            self._json(200, {'power': power_state()})
+            return
+        if path == '/tv/status':
+            self._json(200, STATUS or {'at': 0})
+            return
         if path == '/health':
             self._json(200, {'ok': True})
             return
@@ -216,6 +377,23 @@ class Handler(BaseHTTPRequestHandler):
             ok = send_key(str(body.get('key') or ''))
             self._json(200 if ok else 503, {'ok': ok})
             return
+        if path == '/tv/power':
+            action = body.get('action') or 'toggle'
+            if action not in ('on', 'off', 'toggle'):
+                self._json(400, {'error': 'action'})
+                return
+            self._json(200, power_action(action))
+            return
+        if path == '/tv/status':
+            kept = {}
+            for key in ('at', 'view', 'ambient', 'saver', 'photo', 'weather', 'app'):
+                if key in body:
+                    kept[key] = body[key]
+            kept['received'] = int(time.time() * 1000)
+            STATUS.clear()
+            STATUS.update(kept)
+            self._json(200, {'ok': True})
+            return
         self._json(404, {})
 
 
@@ -226,19 +404,21 @@ def install_login(tv):
     env = ''
     if tv:
         env += '    <key>WIZ_TV</key><string>%s</string>\n' % tv
-    # The token stays in ~/.wiz/token. It is not copied into this file.
+    extra = ''
+    if TV_MAC:
+        extra = '<string>--tv-mac</string><string>%s</string>' % TV_MAC
     body = '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>io.freemytv.wizbridge</string>
   <key>ProgramArguments</key>
-  <array><string>/usr/bin/python3</string><string>%s</string></array>
+  <array><string>/usr/bin/python3</string><string>%s</string>%s</array>
   <key>RunAtLoad</key><true/>
   <key>EnvironmentVariables</key>
   <dict>
 %s  </dict>
 </dict></plist>
-''' % (script, env)
+''' % (script, extra, env)
     with open(plist, 'w', encoding='utf-8') as f:
         f.write(body)
     print('Wrote %s' % plist)
@@ -246,10 +426,14 @@ def install_login(tv):
 
 
 def main():
-    global TV, PORT
+    global TV, PORT, TV_MAC
     args = sys.argv[1:]
     if '--tv' in args:
         TV = args[args.index('--tv') + 1]
+    if '--tv-mac' in args:
+        TV_MAC = normalize_mac(args[args.index('--tv-mac') + 1])
+        if TV_MAC:
+            write_mac(TV_MAC)
     if '--port' in args:
         PORT = int(args[args.index('--port') + 1])
     if '--install-login' in args:

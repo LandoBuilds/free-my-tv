@@ -12,6 +12,7 @@ out/
 *.ipk
 !docs/webos/FreeMyTV-webos-*.ipk
 *.wgt
+!dist/FreeMyTV-tizen-1.5.3.wgt
 __pycache__/
 
 # macOS
