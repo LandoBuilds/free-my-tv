@@ -108,7 +108,7 @@ var LiveWeather = (function () {
     '  vec3 horizonNight = vec3(0.08, 0.09, 0.16);',
     '  vec3 zenith = mix(zenithNight, zenithDay, day);',
     '  vec3 horizon = mix(horizonNight, horizonDay, day);',
-    '  if (uKind > 4.5) { zenith = vec3(0.012, 0.016, 0.03); horizon = vec3(0.045, 0.05, 0.065); }',
+    '  if (uKind > 4.5) { zenith = vec3(0.008, 0.01, 0.026); horizon = vec3(0.06, 0.055, 0.1); }',
     '  else if (uKind > 2.5) { zenith = mix(zenith, vec3(0.16, 0.2, 0.26), 0.62); horizon = mix(horizon, vec3(0.32, 0.36, 0.4), 0.5); }',
     '  float gy = pow(clamp(uv.y, 0.0, 1.0), 0.65);',
     '  vec3 col = mix(horizon, zenith, gy);',
@@ -136,11 +136,13 @@ var LiveWeather = (function () {
     '    col += vec3(0.7, 0.75, 0.9) * exp(-length(mc) * 10.0) * 0.25 * disk;',
     '  }',
     '  vec2 cuv = uv * vec2(1.7, 1.05);',
-    '  cuv.x += uTime * (0.012 + uWind * 0.006);',
-    '  cuv.y += sin(uTime * 0.05 + uv.x * 2.0) * 0.012;',
-    '  float n1 = fbm(cuv * 1.25);',
-    '  float n2 = fbm(cuv * 2.45 + vec2(n1 * 1.25, n1 * 0.45 + uTime * 0.018));',
-    '  float fine = noise(cuv * 6.8 + vec2(uTime * 0.02, n1 * 2.0));',
+    '  float storm = step(4.5, uKind);',
+    '  float drift = mix(0.018, 0.11, storm);',
+    '  vec2 farC = cuv + vec2(uTime * drift + uWind * 0.02, sin(uTime * 0.05) * 0.012);',
+    '  vec2 nearC = cuv + vec2(uTime * drift * 2.35, sin(uTime * 0.08 + uv.x) * 0.02);',
+    '  float n1 = fbm(farC * 1.15);',
+    '  float n2 = fbm(nearC * 2.15 + vec2(n1 * 0.85, uTime * mix(0.012, 0.04, storm)));',
+    '  float fine = noise(nearC * 5.4 + vec2(uTime * drift * 2.6, n1));',
     '  float field = n1 * 0.52 + n2 * 0.36 + fine * 0.12;',
     '  float edge = mix(0.58, 0.33, uCover);',
     '  float band = uKind > 4.5 ? 0.055 : 0.12;',
@@ -154,16 +156,11 @@ var LiveWeather = (function () {
     '    cloudCol = mix(vec3(0.01, 0.012, 0.02), vec3(0.2, 0.23, 0.3), lit);',
     '    cloudCol = mix(cloudCol, vec3(0.004, 0.005, 0.008), clamp(under, 0.0, 0.82));',
     '  }',
-    '  float dLight = length((uv - uBolt) * vec2(1.15, 1.4));',
-    '  float reach = mix(3.4, 6.4, smoothstep(0.4, 0.8, uFlash));',
-    '  float glow = exp(-dLight * reach) * uFlash;',
-    '  float rim = smoothstep(band + 0.03, 0.0, abs(field - edge)) * glow;',
-    '  if (uKind > 4.5) {',
-    '    cloudCol += vec3(0.62, 0.72, 0.95) * glow * (0.35 + lit * 0.85);',
-    '    cloudCol += vec3(0.9, 0.94, 1.0) * rim * 0.65;',
-    '  }',
+    '  float dLight = length((uv - uBolt) * vec2(0.9, 1.05));',
+    '  float glow = exp(-dLight * 1.15) * uFlash;',
+    '  float body = smoothstep(edge - 0.02, edge + 0.22, field);',
+    '  if (uKind > 4.5) cloudCol += vec3(0.62, 0.7, 0.95) * glow * body * 1.15;',
     '  col = mix(col, cloudCol, clouds * (0.64 + 0.36 * uCover));',
-    '  if (uKind > 4.5) col += vec3(0.3, 0.38, 0.55) * glow * 0.05 * (1.0 - clouds);',
     '  if (uKind > 1.5 && uKind < 2.5) {',
     '    col = mix(col, vec3(0.55, 0.58, 0.62), 0.62);',
     '    float fog = fbm(uv * vec2(1.3, 0.4) + vec2(uTime * 0.025, 0.0));',
@@ -368,14 +365,14 @@ var LiveWeather = (function () {
 
   function displaceBolt() {
     var w = canvas.width, h = canvas.height, b, from, pts, dir, span, reach, origins;
-    boltPts[0].x = w * (0.18 + Math.random() * 0.64);
-    boltPts[0].y = h * (0.02 + Math.random() * 0.12);
-    boltPts[boltPts.length - 1].x = boltPts[0].x + (Math.random() - 0.5) * w * 0.42;
-    boltPts[boltPts.length - 1].y = h * (0.72 + Math.random() * 0.24);
-    jag(boltPts, boltPts.length, w * 0.3);
+    boltPts[0].x = w * (0.22 + Math.random() * 0.56);
+    boltPts[0].y = h * (0.06 + Math.random() * 0.16);
+    boltPts[boltPts.length - 1].x = boltPts[0].x + (Math.random() - 0.5) * w * 0.22;
+    boltPts[boltPts.length - 1].y = h * (0.32 + Math.random() * 0.22);
+    jag(boltPts, boltPts.length, w * 0.16);
     origins = [5, 10, 14, 18, 24];
     for (b = 0; b < 5; b++) {
-      if (Math.random() < 0.18) { branchLen[b] = 0; continue; }
+      if (Math.random() < 0.45) { branchLen[b] = 0; continue; }
       from = origins[b];
       pts = branchPts[b];
       span = branchSpan[b];
@@ -421,10 +418,10 @@ var LiveWeather = (function () {
     boltCtx.globalCompositeOperation = 'lighter';
     boltCtx.lineJoin = 'round';
     boltCtx.lineCap = 'round';
-    strokeBolt(boltPts, boltPts.length, 6.5, 1.15, alpha, 0.28);
+    strokeBolt(boltPts, boltPts.length, 3.2, 0.7, alpha, 0.72);
     for (b = 0; b < 5; b++) {
       if (!branchLen[b]) continue;
-      strokeBolt(branchPts[b], branchLen[b], branchLen[b] < 7 ? 2.4 : 3.4, 0.7, alpha * 0.8, 0.92);
+      strokeBolt(branchPts[b], branchLen[b], 1.6, 0.45, alpha * 0.55, 0.95);
     }
     boltCtx.restore();
   }
@@ -463,32 +460,35 @@ var LiveWeather = (function () {
     } catch (e) {}
   }
 
+  var preferSheet = 0;
+
   function strike() {
-    var roll = Math.random(), sheet = roll < 0.42, close = roll > 0.84;
+    var sheet = preferSheet || Math.random() < 0.86;
     var wall = Date.now(), i, t, at;
+    preferSheet = 0;
     displaceBolt();
     showBolt = sheet ? 0 : 1;
-    flash = sheet ? (0.2 + Math.random() * 0.16) : (close ? 0.9 : 0.48 + Math.random() * 0.18);
+    flash = sheet ? (0.28 + Math.random() * 0.2) : (0.22 + Math.random() * 0.12);
     if (sheet) {
-      boltUv[0] = 0.16 + Math.random() * 0.68;
-      boltUv[1] = 0.6 + Math.random() * 0.28;
+      boltUv[0] = 0.18 + Math.random() * 0.64;
+      boltUv[1] = 0.55 + Math.random() * 0.32;
       boltLife = 0;
       boltAlpha = 0;
     } else {
-      at = close ? 16 : 8;
+      at = 6 + Math.floor(Math.random() * 8);
       boltUv[0] = boltPts[at].x / canvas.width;
       boltUv[1] = 1 - boltPts[at].y / canvas.height;
-      boltLife = close ? 28 : 22;
-      boltAlpha = 1;
+      boltLife = 8 + Math.floor(Math.random() * 5);
+      boltAlpha = 0.32 + Math.random() * 0.16;
     }
-    flickerN = sheet ? 2 : (close ? 4 : 3);
+    flickerN = 3 + Math.floor(Math.random() * 3);
     flickerI = 0;
-    t = wall + 140 + Math.random() * 80;
+    t = wall + 60 + Math.random() * 140;
     for (i = 0; i < flickerN; i++) {
       flickerAt[i] = t;
-      t += 55 + Math.random() * 120;
+      t += 35 + Math.random() * 240;
     }
-    thunderAt = wall + (sheet ? 800 + Math.random() * 2200 : (close ? 180 + Math.random() * 520 : 300 + Math.random() * 1700));
+    thunderAt = wall + (sheet ? 900 + Math.random() * 2400 : 400 + Math.random() * 1600);
   }
 
   function drawGL(sec) {
@@ -591,8 +591,7 @@ var LiveWeather = (function () {
       if (nextBolt < 0) nextBolt = now + 2200 + Math.random() * 4000;
       if (now > nextBolt) {
         strike();
-        if (showBolt && Math.random() < 0.34) nextBolt = now + 380 + Math.random() * 700;
-        else nextBolt = now + 1600 + Math.random() * 5200;
+        nextBolt = now + (showBolt ? 7000 + Math.random() * 9000 : 700 + Math.random() * 2600);
       }
     }
     if (boltLife > 0) boltLife--;
@@ -601,9 +600,8 @@ var LiveWeather = (function () {
         flash *= 0.2;
         boltAlpha = 0.1;
       } else {
-        flash = showBolt ? (0.62 + Math.random() * 0.35) : (0.22 + Math.random() * 0.16);
-        boltAlpha = 1;
-        if (showBolt && boltLife < 12) boltLife = 16;
+        flash = showBolt ? (0.16 + Math.random() * 0.1) : (0.22 + Math.random() * 0.22);
+        boltAlpha = showBolt ? (0.28 + Math.random() * 0.14) : 0;
       }
       flickerI++;
     }
@@ -700,6 +698,6 @@ var LiveWeather = (function () {
     noteAlert: function (text) { alertText = text || ''; },
     refreshAlert: refreshAlert,
     wake: loopStart,
-    strikeSoon: function () { nextBolt = 0; }
+    strikeSoon: function () { nextBolt = 0; preferSheet = 1; }
   };
 })();
