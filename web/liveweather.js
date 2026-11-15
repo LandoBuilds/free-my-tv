@@ -220,7 +220,7 @@ var LiveWeather = (function () {
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
   var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
-  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, skipDraw = false, holdUntil = 0, drawn = 0;
+  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, skipDraw = false, holdUntil = 0, drawn = 0, anim = 0, shownFade = 1;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -622,6 +622,27 @@ var LiveWeather = (function () {
     }
   }
 
+  function fadeTo(level) {
+    if (!canvas || shownFade === level) return;
+    shownFade = level;
+    var value = level < 1 ? '0.72' : '1';
+    canvas.style.opacity = value;
+    if (boltCanvas) boltCanvas.style.opacity = value;
+  }
+
+  /** Seconds for the shader. Advanced by a clamped step so a pause cannot throw the streaks off the bottom. */
+  function stepClock(now) {
+    var dt = 0.034;
+    if (frameLast) {
+      dt = (now - frameLast) / 1000;
+      if (!(dt > 0) || dt > 0.05) dt = 0.034;
+    }
+    frameLast = now;
+    anim += dt;
+    if (anim > 3600) anim -= 3600;
+    return anim;
+  }
+
   function schedule(fn) {
     if (mode === 'overlay' || mode === 'row') {
       setTimeout(function () { fn(Date.now()); }, 34);
@@ -632,11 +653,22 @@ var LiveWeather = (function () {
   }
 
   function frame(now) {
-    if (!running || !canvas) return;
-    if (paused || (typeof document !== 'undefined' && document.hidden)) { running = false; return; }
-    if (holdUntil && Date.now() < holdUntil) { schedule(frame); return; }
-    holdUntil = 0;
-    if (skipDraw) { skipDraw = false; schedule(frame); return; }
+    if (!running || !canvas || mode === 'off') return;
+    if (typeof document !== 'undefined' && document.hidden) {
+      running = false;
+      frameLast = 0;
+      return;
+    }
+    var quiet = paused || skipDraw || (holdUntil && Date.now() < holdUntil);
+    skipDraw = false;
+    if (holdUntil && Date.now() >= holdUntil) holdUntil = 0;
+    if (quiet) {
+      frameLast = 0;
+      fadeTo(0.72);
+      schedule(frame);
+      return;
+    }
+    fadeTo(1);
     if (frameLast && mode !== 'overlay' && mode !== 'row') {
       frameAcc += now - frameLast;
       frameN++;
@@ -650,8 +682,7 @@ var LiveWeather = (function () {
         }
       }
     }
-    frameLast = now;
-    var sec = now / 1000;
+    var sec = stepClock(now);
     var wall = Date.now();
     if (scene.kind === 'storm') {
       if (nextBolt < 0) nextBolt = now + 2200 + Math.random() * 4000;
@@ -690,7 +721,7 @@ var LiveWeather = (function () {
   }
 
   function loopStart() {
-    if (running || paused) return;
+    if (running) return;
     running = true;
     frameLast = 0;
     schedule(frame);
@@ -701,6 +732,8 @@ var LiveWeather = (function () {
     if (next === 'off') {
       mode = 'off';
       running = false;
+      frameLast = 0;
+      fadeTo(1);
       canvas.className = 'layer';
       if (boltCanvas) boltCanvas.className = 'layer';
       return;
@@ -727,6 +760,8 @@ var LiveWeather = (function () {
       boltCanvas.height = canvas.height;
     }
     note(next + (gl ? ' webgl' : (ctx ? ' canvas' : ' undrawn')));
+    frameLast = 0;
+    fadeTo(1);
     loopStart();
   }
 
@@ -1042,8 +1077,7 @@ var LiveWeather = (function () {
     boot: boot,
     setPaused: function (on) {
       paused = !!on;
-      if (paused) running = false;
-      else if (mode !== 'off') loopStart();
+      if (mode !== 'off') loopStart();
     },
     skipFrame: function () { skipDraw = true; },
     hold: function (ms) {
