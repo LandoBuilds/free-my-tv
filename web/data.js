@@ -45,14 +45,15 @@ var Place = (function () {
 
   var tz = zone(TV.zone()), set = CONFIG.latitude !== '' && CONFIG.latitude !== undefined;
   var country = (CONFIG.tmdbRegion || (tz ? tz.country : '') || 'US').toUpperCase();
+  // A build without a city starts in Cedar Park, Texas (this fork's home), in °F. Home Settings → City still wins.
   return {
-    lat: set ? CONFIG.latitude : tz ? tz.lat : '40.7128',
-    lon: set ? CONFIG.longitude : tz ? tz.lon : '-74.0060',
-    city: CONFIG.city || (!set && tz ? tz.name : ''),
+    lat: set ? CONFIG.latitude : '30.5052',
+    lon: set ? CONFIG.longitude : '-97.8203',
+    city: CONFIG.city || (set ? (tz ? tz.name : '') : 'Cedar Park'),
     country: country,
     currency: (CONFIG.currency || (country === 'BR' ? 'BRL' : EURO.test(country) ? 'EUR' : 'USD')).toUpperCase(),
-    /** Fahrenheit for TVs in the US (by their time zone, or their language when it doesn't tell). */
-    fahrenheit: tz ? tz.country === 'US' : /-US$/i.test(navigator.language || '')
+    /** Fahrenheit for TVs in the US, and for the Cedar Park default. */
+    fahrenheit: set ? (tz ? tz.country === 'US' : /-US$/i.test(navigator.language || '')) : true
   };
 })();
 
@@ -72,7 +73,47 @@ var Prefs = (function () {
     /** OK on the screensaver opens the title it shows, in its app; any other key only closes it (off by default). */
     saverWatch: function () { return pick('saverWatch', false) === true; },
     /** What the screensaver shows: 'photos' (the picks' photos, as it always has) or 'clock' (a clock and the weather). */
-    saver: function () { return pick('saver', 'photos') === 'clock' ? 'clock' : 'photos'; },
+    /** 'photos', 'clock', or 'live' (the animated forecast). */
+    saver: function () {
+      var s = pick('saver', 'photos');
+      return s === 'clock' || s === 'live' ? s : 'photos';
+    },
+    /** Drops and clouds over the home screen. Off until turned on. */
+    liveHome: function () { return pick('liveHome', false) === true; },
+    /** The same, over the photo screensaver and a shared album. Off until turned on. */
+    livePhotos: function () { return pick('livePhotos', false) === true; },
+    /** A quiet rumble with each flash. Off until turned on. */
+    liveSound: function () { return pick('liveSound', false) === true; },
+    /** How many drops the canvas keeps: 'low', 'medium' or 'high'. */
+    liveQuality: function () {
+      var q = pick('liveQuality', 'medium');
+      return q === 'low' || q === 'high' ? q : 'medium';
+    },
+    /** 'auto' follows the forecast. The others are a preview: clear, rain, storm, snow, fog, night. */
+    liveForce: function () {
+      var f = pick('liveForce', 'auto');
+      return f === 'clear' || f === 'rain' || f === 'storm' || f === 'snow' || f === 'fog' || f === 'night' ? f : 'auto';
+    },
+    /** What fills the recommendations row: 'picks', 'weather' or 'photos'. */
+    homeShow: function () {
+      var s = pick('homeShow', 'picks');
+      return s === 'weather' || s === 'photos' ? s : 'picks';
+    },
+    /** 'off' leaves the screensaver as it was. 'auto' picks morning, day, evening or night. */
+    ambient: function () { return pick('ambient', 'off') === 'auto' ? 'auto' : 'off'; },
+    ambientHour: function (name, fallback) {
+      var n = parseInt(pick(name, fallback), 10);
+      return isNaN(n) || n < 0 || n > 23 ? fallback : n;
+    },
+    /** The calendar address, typed on the TV. Never written to the log. */
+    icalUrl: function () { return String(pick('icalUrl', '')).trim(); },
+    /** The Mac bridge, and the token that opens it. The token is never written to the log. */
+    wizUrl: function () { return String(pick('wizUrl', '')).trim(); },
+    wizToken: function () { return String(pick('wizToken', '')); },
+    /** Tiles pick up a little of the photo or the sky. */
+    tint: function () { return pick('tint', true) !== false; },
+    /** Apps opened from this screen, in front of the picks. Tizen has no playback progress to show. */
+    resume: function () { return pick('resume', true) !== false; },
     /** Dimming over the picture, for a dark room: 'off', 'low', 'medium', 'high' or 'auto' (medium at night). */
     dim: function () { return pick('dim', 'off'); },
     /** The weather card's forecast: 'hours' (the next 6 hours) or 'days' (the next 5 days). */
@@ -129,6 +170,25 @@ var Prefs = (function () {
       var c = String(pick('clockFormat', CONFIG.clockFormat));
       return c === '24' || c === '12' ? c : 'auto';
     },
+    /** The iCloud shared album link pasted on the TV (Home Settings). It stays in this file, on the device. */
+    icloudAlbum: function () { return String(pick('icloudAlbum', '') || ''); },
+    /** The screensaver shows that album. Off until it's turned on. */
+    icloudSaver: function () { return pick('icloudSaver', false) === true; },
+    /** The same photos behind the home screen. Off until it's turned on. */
+    icloudHome: function () { return pick('icloudHome', false) === true; },
+    /** Shuffle the album. Off plays it in date order. */
+    icloudShuffle: function () { return pick('icloudShuffle', true) !== false; },
+    /** Slow pan and zoom. Otherwise each photo only fades in. */
+    icloudKen: function () { return pick('icloudTransition', 'fade') === 'ken'; },
+    /** The whole photo, letterboxed. Otherwise it fills the screen and is never stretched. */
+    icloudFit: function () { return pick('icloudAspect', 'fill') === 'fit'; },
+    /** A small clock and the date on the album screensaver. */
+    icloudClock: function () { return pick('icloudClock', true) !== false; },
+    /** How long each photo stays, in seconds: 5, 10, 15, 30 or 60. */
+    icloudInterval: function () {
+      var n = pick('icloudInterval', 10);
+      return n === 5 || n === 15 || n === 30 || n === 60 ? n : 10;
+    },
     set: function (name, value) { v[name] = value; save(); this.version++; },
     setCoin: function (i, on) {
       var c = (pick('coins', null) || [true, true, true, true]).slice();
@@ -155,8 +215,9 @@ var Data = (function () {
       if (x.readyState !== 4 || over) return;
       over = true;
       if (x.status !== 200) { done(new Error(x.status === 401 ? 'TMDB rejected the key' : 'HTTP ' + x.status)); return; }
-      var json;
+      var json, parseAt = Date.now();
       try { json = JSON.parse(x.responseText); } catch (e) { done(e); return; }
+      if (typeof Pace !== 'undefined') Pace.note('json-parse', Date.now() - parseAt);
       done(null, json);
     };
     x.ontimeout = x.onerror = function () { if (!over) { over = true; done(new Error('no connection')); } };
@@ -188,7 +249,7 @@ var Data = (function () {
   // Both forecasts in one answer, the next 48 hours and today plus 5 days: Home Settings → Forecast switches without
   // asking again, and offline too. 14 steps of 15 minutes tell the card whether rain comes in the next two hours, even
   // from a forecast 30 minutes old (where the time zone is off by half an hour, they start up to 45 minutes back).
-  var QUERY = '&current=temperature_2m,weather_code,is_day'
+  var QUERY = '&current=temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m'
       + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code,uv_index_max'
       + '&minutely_15=precipitation,precipitation_probability&forecast_minutely_15=14'
       + '&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48';
@@ -210,7 +271,11 @@ var Data = (function () {
     if (!o || !o.current) return null;
     var off = o.utc_offset_seconds || 0, dl = o.daily, now = Date.now();
     var w = {
-      temp: o.current.temperature_2m, code: o.current.weather_code, isDay: o.current.is_day !== 0,
+      temp: o.current.temperature_2m, feels: o.current.apparent_temperature, code: o.current.weather_code,
+      modelCode: o.current.weather_code,
+      isDay: o.current.is_day !== 0, precip: o.current.precipitation,
+      wind: o.current.wind_speed_10m, windDir: o.current.wind_direction_10m,
+      cloud: typeof o.current.cloud_cover === 'number' ? o.current.cloud_cover : null,
       max: dl.temperature_2m_max[0], min: dl.temperature_2m_min[0],
       uv: dl.uv_index_max ? dl.uv_index_max[0] : null,
       sunrise: localTime(dl.sunrise[0], off), sunset: localTime(dl.sunset[0], off), hours: [], days: []
@@ -223,7 +288,7 @@ var Data = (function () {
       for (var k = 0; k < mr.time.length; k++) {
         var pr = mr.precipitation_probability ? mr.precipitation_probability[k] || 0 : 0;
         var mm = mr.precipitation ? mr.precipitation[k] || 0 : 0;
-        w.steps.push([localTime(mr.time[k], off), pr >= 50 || mm >= 0.2]);
+        w.steps.push([localTime(mr.time[k], off), pr >= 50 || mm >= 0.2, mm]);
       }
     }
     var hr = o.hourly;
@@ -240,7 +305,26 @@ var Data = (function () {
       w.days.push({at: new Date(+p[0], p[1] - 1, +p[2], 12).getTime(), max: dl.temperature_2m_max[j],
         min: dl.temperature_2m_min[j], code: dl.weather_code[j]});
     }
+    var raised = floorCode(w.modelCode, w.cloud, w.precip);
+    if (raised !== null) w.code = raised;
     return w;
+  }
+
+  /** Cloud cover and rain raise a clear code. A missing code stays missing, so the sky does not invent sun. */
+  function floorCode(code, cloud, precip) {
+    var wet = typeof precip === 'number' && precip >= 0.1;
+    var known = typeof code === 'number' && !isNaN(code);
+    if (!known) {
+      if (wet) return 51;
+      if (typeof cloud === 'number' && cloud >= 80) return 3;
+      if (typeof cloud === 'number' && cloud >= 35) return 2;
+      return null;
+    }
+    if (code >= 71) return code;
+    if (wet && code < 51) return 51;
+    if (typeof cloud === 'number' && cloud >= 80 && code < 3) return 3;
+    if (typeof cloud === 'number' && cloud >= 35 && code < 2) return 2;
+    return code;
   }
 
   /**
@@ -257,9 +341,59 @@ var Data = (function () {
     return s[s.length - 1][0] + STEP >= end ? -1 : null;
   }
 
+  /** Millimetres Open-Meteo expects in the next hour, from the 15-minute steps, or null when they don't reach. */
+  function nextHourMm(now) {
+    var s = weather && weather.steps, end = now + 3600000, sum = 0, any = false, i;
+    if (!s) return null;
+    for (i = 0; i < s.length; i++) {
+      if (s[i][0] + 15 * 60000 <= now) continue;
+      if (s[i][0] >= end) break;
+      if (s[i].length > 2 && s[i][2]) { sum += s[i][2]; any = true; }
+    }
+    if (!any && s.length && s[s.length - 1][0] < end) return null;
+    return any ? sum : 0;
+  }
+
+  /** Millimetres in the 15-minute step that covers `now`, or null when the forecast doesn't say. */
+  function minuteNow(now) {
+    var s = weather && weather.steps, step = 15 * 60000, i;
+    if (!s) return null;
+    for (i = 0; i < s.length; i++) {
+      if (s[i][0] <= now && now < s[i][0] + step) return s[i].length > 2 ? (s[i][2] || 0) : 0;
+    }
+    return null;
+  }
+
+  /** The sky the radar (or the station) picked. The model code stays on modelCode. */
+  function applySky(choice) {
+    if (!weather || !choice || typeof choice.code !== 'number') return;
+    if (choice.source === 'none') return;
+    if (typeof weather.modelCode !== 'number') weather.modelCode = weather.code;
+    var kept = floorCode(weather.modelCode, weather.cloud, weather.precip);
+    var next = choice.code;
+    if (next <= 1 && kept !== null && kept >= 2) next = kept;
+    var same = weather.code === next && weather.source === choice.source;
+    weather.code = next;
+    weather.source = choice.source;
+    if (typeof choice.dbz === 'number') weather.radarDbz = choice.dbz;
+    var floor = 0;
+    if (choice.source === 'radar' && choice.dbz >= 45) floor = 4;
+    else if (choice.source === 'radar' && choice.dbz >= 35) floor = 1.5;
+    else if (choice.source === 'radar' && choice.dbz >= 20) floor = 0.4;
+    else if (choice.source === 'minutely') {
+      var mm = minuteNow(Date.now());
+      floor = mm >= 2 ? 4 : mm >= 0.5 ? 1.5 : mm >= 0.1 ? 0.4 : 0;
+    }
+    if (floor) weather.precip = Math.max(weather.precip || 0, floor);
+    if (!same) changed();
+  }
+
   function refreshWeather() {
     var now = Date.now();
-    if (fetchingWeather || (now - weatherAt < 30 * 60000 && now >= weatherAt)) return;
+    // The card can wait half an hour. Live weather, while it's on screen, asks again every few minutes.
+    var live = Prefs.saver() === 'live' || Prefs.liveHome() || Prefs.livePhotos() || Prefs.homeShow() === 'weather';
+    var every = live ? 5 * 60000 : 30 * 60000;
+    if (fetchingWeather || (now - weatherAt < every && now >= weatherAt)) return;
     fetchingWeather = true;
     var at = place();
     getMeteo('api.open-meteo.com/v1/forecast?latitude=' + Prefs.latitude() + '&longitude=' + Prefs.longitude() + QUERY, function (err, body) {
@@ -267,6 +401,12 @@ var Data = (function () {
       if (at !== place()) { refreshWeather(); return; }   // another city was picked meanwhile
       if (err) return;
       weather = parseWeather(body);
+      var held = typeof LiveWeather !== 'undefined' && LiveWeather.sky ? LiveWeather.sky() : null;
+      if (weather && held && Date.now() - held.at < 10 * 60000) {
+        weather.code = held.code;
+        weather.source = held.source;
+        if (typeof held.dbz === 'number') weather.radarDbz = held.dbz;
+      }
       weatherAt = Date.now();
       store('weather', {place: at, body: body, at: weatherAt, query: QUERY});
       changed();
@@ -842,10 +982,17 @@ var Data = (function () {
     settingsChanged: function () { pricesAt = 0; refreshPrices(); changed(); },
     findCity: findCity,
     /** Another city picked: its weather now (none shown until it comes). */
-    cityChanged: function () { weather = null; weatherAt = 0; air = null; airAt = 0; airTried = 0; refreshWeather(); refreshAir(); changed(); },
+    cityChanged: function () {
+      weather = null; weatherAt = 0; air = null; airAt = 0; airTried = 0;
+      if (typeof LiveWeather !== 'undefined' && LiveWeather.resetSky) LiveWeather.resetSky();
+      refreshWeather(); refreshAir(); changed();
+    },
     get weather() { return weather; },
     get air() { return air; },
     rainIn: rainIn,
+    nextHourMm: function () { return nextHourMm(Date.now()); },
+    minuteNow: function () { return minuteNow(Date.now()); },
+    applySky: applySky,
     get weatherAt() { return weatherAt; },
     prices: prices,
     changes: changes,

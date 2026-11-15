@@ -836,6 +836,18 @@ var TV = (function () {
       try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; }
     },
 
+    /**
+     * POST a JSON body to iCloud from LG's service, which isn't a browser, so Apple's CORS header doesn't apply.
+     * done(err, {status, text, host}). The page only asks for the album hosts; the service refuses anything else.
+     */
+    applePost: function (url, body, done) {
+      if (!webos) { if (done) done(new Error('no connection')); return; }
+      luna('luna://' + self + '.service/apple', {url: url, body: body}, function (res) {
+        if (!res || !res.status) { done(new Error('no connection')); return; }
+        done(null, {status: res.status, text: res.body || '', host: res.host || ''});
+      });
+    },
+
     /** Key codes: the arrows, OK and the TV's Back (LG 461, Samsung 10009). */
     keys: {left: 37, up: 38, right: 39, down: 40, ok: 13, back: samsung ? 10009 : 461}
   };

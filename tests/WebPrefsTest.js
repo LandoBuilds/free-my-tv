@@ -76,5 +76,44 @@ expect(prefs({}, {homeButton: true}).homeReturns(), true, 'samsung_home_button f
 expect(prefs({homeReturns: false}, {homeButton: true}).homeReturns(), false, 'turned off on the TV');
 expect(prefs({homeReturns: 'yes'}).homeReturns(), false, 'not a boolean');
 
+expect(prefs({}).icloudAlbum(), '', 'no iCloud album until one is pasted');
+expect(prefs({icloudAlbum: 'https://www.icloud.com/sharedalbum/#B12'}).icloudAlbum(),
+  'https://www.icloud.com/sharedalbum/#B12', 'the album link stays on the TV');
+expect(prefs({}).icloudSaver(), false, 'the album screensaver is off');
+expect(prefs({icloudSaver: true}).icloudSaver(), true, 'the album screensaver is on');
+expect(prefs({icloudSaver: 'yes'}).icloudSaver(), false, 'not a boolean');
+expect(prefs({}).icloudHome(), false, 'the home background is off');
+expect(prefs({icloudHome: true}).icloudHome(), true, 'the home background is on');
+expect(prefs({}).icloudShuffle(), true, 'shuffle until turned off');
+expect(prefs({icloudShuffle: false}).icloudShuffle(), false, 'in order');
+expect(prefs({}).icloudKen(), false, 'a crossfade until slow zoom is picked');
+expect(prefs({icloudTransition: 'ken'}).icloudKen(), true, 'slow zoom');
+expect(prefs({}).icloudFit(), false, 'photos fill the screen');
+expect(prefs({icloudAspect: 'fit'}).icloudFit(), true, 'the whole photo');
+expect(prefs({}).icloudClock(), true, 'a clock on the album');
+expect(prefs({icloudClock: false}).icloudClock(), false, 'no clock');
+expect(prefs({}).icloudInterval(), 10, 'ten seconds');
+expect(prefs({icloudInterval: 30}).icloudInterval(), 30, 'thirty seconds');
+expect(prefs({icloudInterval: 7}).icloudInterval(), 10, 'not one of the steps');
+
+expect(prefs({}).saver(), 'photos', 'the screensaver stays the photos');
+expect(prefs({saver: 'clock'}).saver(), 'clock', 'the clock screensaver');
+expect(prefs({saver: 'live'}).saver(), 'live', 'live weather');
+expect(prefs({saver: 'nope'}).saver(), 'photos', 'not a screensaver');
+expect(prefs({}).liveHome(), false, 'no weather over the home screen');
+expect(prefs({liveHome: true}).liveHome(), true, 'weather over the home screen');
+expect(prefs({}).livePhotos(), false, 'no weather over the photos');
+expect(prefs({}).liveSound(), false, 'thunder stays quiet');
+expect(prefs({}).liveQuality(), 'medium', 'medium detail');
+expect(prefs({liveQuality: 'low'}).liveQuality(), 'low', 'fewer drops');
+expect(prefs({liveQuality: 'huge'}).liveQuality(), 'medium', 'not a detail');
+expect(prefs({}).liveForce(), 'auto', 'the real forecast');
+expect(prefs({liveForce: 'storm'}).liveForce(), 'storm', 'a preview storm');
+expect(prefs({liveForce: 'wind'}).liveForce(), 'auto', 'not a preview');
+expect(prefs({}).homeShow(), 'picks', 'recommendations stay in the row');
+expect(prefs({homeShow: 'weather'}).homeShow(), 'weather', 'live weather in the row');
+expect(prefs({homeShow: 'photos'}).homeShow(), 'photos', 'photos in the row');
+expect(prefs({homeShow: 'nope'}).homeShow(), 'picks', 'not a home row');
+
 if (failures) process.exit(1);
 console.log('WebPrefsTest: all checks passed.');

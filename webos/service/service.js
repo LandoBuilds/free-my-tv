@@ -91,6 +91,67 @@ function call(uri, clientKey, done) {
   socket.on('close', function () { finish(null); });
 }
 
+/**
+ * One POST to iCloud for the shared album. The page can't read Apple's JSON (the reply is only for icloud.com),
+ * and this process isn't a browser. Only the album hosts and the four album paths; nothing else is fetched, and
+ * the address is never logged. Kept in step with ICloud.allowedUrl in web/icloud.js.
+ */
+function appleAllowed(target) {
+  if (!target || target.protocol !== 'https:' || !target.hostname || !target.path) return false;
+  var host = String(target.hostname).toLowerCase();
+  var path = target.path;
+  var hostOk = host === 'sharedstreams.icloud.com' || host === 'ckdatabasews.icloud.com'
+    || /^p[0-9]{1,3}-sharedstreams\.icloud\.com$/.test(host)
+    || /^p[0-9]{1,3}-ckdatabasews\.icloud\.com$/.test(host);
+  if (!hostOk) return false;
+  return path.indexOf('/sharedstreams/webstream') >= 0 || path.indexOf('/sharedstreams/webasseturls') >= 0
+    || path.indexOf('/database/1/com.apple.photos.cloud/production/public/records/resolve') >= 0
+    || path.indexOf('/database/1/com.apple.photos.cloud/production/shared/records/query') >= 0;
+}
+
+service.register('apple', function (message) {
+  var https, urlMod, parsed, sent = false;
+  try {
+    https = require('https');
+    urlMod = require('url');
+  } catch (e) {
+    message.respond({returnValue: false, errorText: 'no connection'});
+    return;
+  }
+  var body = String((message.payload && message.payload.body) || '');
+  try { parsed = urlMod.parse(String((message.payload && message.payload.url) || '')); } catch (e2) { parsed = null; }
+  if (!appleAllowed(parsed) || body.length > 65536) {
+    message.respond({returnValue: false, errorText: 'Only iCloud'});
+    return;
+  }
+  function reply(obj) {
+    if (sent) return;
+    sent = true;
+    message.respond(obj);
+  }
+  var origin = parsed.hostname.indexOf('ckdatabasews') >= 0 ? 'https://photos.icloud.com' : 'https://www.icloud.com';
+  var req = https.request({
+    hostname: parsed.hostname, path: parsed.path, method: 'POST',
+    headers: {'Content-Type': 'text/plain', 'Content-Length': body.length, 'Origin': origin}
+  }, function (res) {
+    var chunks = [], size = 0, tooBig = false;
+    res.on('data', function (c) {
+      size += c.length;
+      if (size > 3 * 1024 * 1024) { tooBig = true; return; }
+      chunks.push(c);
+    });
+    res.on('end', function () {
+      if (tooBig) { reply({returnValue: false, errorText: 'no connection'}); return; }
+      reply({returnValue: true, status: res.statusCode || 0, body: Buffer.concat(chunks).toString('utf8'),
+        host: res.headers['x-apple-mme-host'] || ''});
+    });
+  });
+  req.setTimeout(20000, function () { req.abort(); });
+  req.on('error', function () { reply({returnValue: false, errorText: 'no connection'}); });
+  req.write(body);
+  req.end();
+});
+
 service.register('ssap', function (message) {
   var p = message.payload || {};
   // Only the app list, the one call the page makes: nothing else goes to the TV's API, nor gets its client key.

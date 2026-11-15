@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Free My TV">
+<meta name="theme-color" content="#0e1218">
+<title>Free My TV</title>
+<style>
+  html, body { margin: 0; background: #0e1218; color: #f4f6f8; font: 17px/1.3 -apple-system, BlinkMacSystemFont, sans-serif; }
+  main { max-width: 420px; margin: 0 auto; padding: 22px 18px 40px; }
+  h1 { font-size: 22px; font-weight: 650; margin: 8px 0 4px; }
+  p { color: #9aa3ad; font-size: 14px; margin: 0 0 18px; }
+  h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #8b949e; margin: 22px 0 8px; }
+  button, select, input { font: inherit; color: inherit; border: 0; border-radius: 14px; }
+  .grid { display: block; }
+  button.wide, select, input { display: block; width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 16px 14px; background: #1c2430; text-align: left; }
+  button.wide:active { background: #2c3a4e; }
+  .pad { text-align: center; }
+  .pad button { display: inline-block; width: 30%; margin: 4px 1%; padding: 18px 0; background: #1c2430; text-align: center; border-radius: 14px; }
+  button.power { text-align: center; font-size: 20px; font-weight: 650; padding: 22px 14px; background: #243044; }
+  button.power.on { background: #1c4030; }
+  button.power.off { background: #402028; }
+  #now-photo, #now-sky { display: none; width: 100%; height: 180px; border-radius: 14px; margin: 0 0 10px; background: #1c2430; }
+  #now-photo { object-fit: cover; }
+  #now-sky { height: 120px; text-align: center; font-size: 56px; line-height: 120px; }
+  .fine { color: #9aa3ad; font-size: 13px; }
+  #now-detail { white-space: pre-line; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Free My TV</h1>
+  <p>Add this page to your Home Screen. The token is the one from the bridge, kept only on this phone.</p>
+  <input id="token" type="password" placeholder="Bridge token" autocomplete="off">
+  <button id="power" class="wide power">Power</button>
+  <div id="status"></div>
+  <section id="now">
+    <h2>Now on TV</h2>
+    <p class="fine">Showing what Free My TV knows</p>
+    <img id="now-photo" alt="">
+    <div id="now-sky"></div>
+    <div id="now-mode"></div>
+    <div id="now-detail"></div>
+    <div id="now-age" class="fine"></div>
+  </section>
+  <h2>Screen</h2>
+  <button class="wide" data-wish="homeShow" data-value="picks">Recommendations</button>
+  <button class="wide" data-wish="homeShow" data-value="weather">Live weather</button>
+  <button class="wide" data-wish="homeShow" data-value="photos">Photos</button>
+  <button class="wide" data-wish="ambient" data-value="start">Start ambient</button>
+  <button class="wide" data-wish="ambient" data-value="off">Back to home</button>
+  <h2>Lights</h2>
+  <select id="group"></select>
+  <button class="wide" data-scene="movie">Movie</button>
+  <button class="wide" data-scene="dim">Dim</button>
+  <button class="wide" data-scene="warm">Warm</button>
+  <button class="wide" data-scene="bright">Bright</button>
+  <button class="wide" data-scene="off">All off</button>
+  <h2>Remote</h2>
+  <div class="pad">
+    <div><button data-key="KEY_UP">Up</button></div>
+    <div><button data-key="KEY_LEFT">Left</button><button data-key="KEY_ENTER">OK</button><button data-key="KEY_RIGHT">Right</button></div>
+    <div><button data-key="KEY_DOWN">Down</button></div>
+    <div><button data-key="KEY_RETURN">Back</button></div>
+  </div>
+</main>
+<script>
+(function () {
+  var tokenBox = document.getElementById('token');
+  try { tokenBox.value = localStorage.getItem('fmtv.bridgeToken') || ''; } catch (e) {}
+  tokenBox.onchange = function () { try { localStorage.setItem('fmtv.bridgeToken', tokenBox.value); } catch (e) {} };
+  function token() { return tokenBox.value || ''; }
+  function say(text, ok) {
+    var s = document.getElementById('status');
+    s.className = ok ? 'ok' : 'bad';
+    s.textContent = text || '';
+  }
+  function send(method, path, body, done, timeout) {
+    var x = new XMLHttpRequest();
+    var url = path;
+    x.open(method, url, true);
+    x.timeout = timeout || 8000;
+    x.setRequestHeader('X-Bridge-Token', token());
+    if (body) x.setRequestHeader('Content-Type', 'application/json');
+    var finished = false;
+    function finish(status, text) { if (finished) return; finished = true; if (done) done(status, text); }
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      finish(x.status, x.responseText);
+    };
+    x.onerror = x.ontimeout = function () { finish(0, ''); };
+    x.send(body ? JSON.stringify(body) : null);
+  }
+  function wish(key, value) {
+    var body = {};
+    body[key] = value;
+    send('POST', '/tv/wish', body, function (status) { say(status === 200 ? 'Sent' : 'Not sent', status === 200); });
+  }
+  function scene(name) {
+    var group = document.getElementById('group').value;
+    send('POST', '/lights/scene', {scene: name, group: group}, function (status) {
+      say(status === 200 ? name : 'Lights did not answer', status === 200);
+    });
+  }
+  function key(name) {
+    send('POST', '/tv/key', {key: name}, function (status) { say(status === 200 ? '' : 'The TV did not take the key', status === 200); });
+  }
+  var powerState = 'off';
+  var powerBox = document.getElementById('power');
+  function paintPower() {
+    powerBox.className = 'wide power ' + (powerState === 'on' ? 'on' : 'off');
+    powerBox.textContent = powerState === 'on' ? 'Turn TV off' : 'Turn TV on';
+  }
+  function power() {
+    var action = powerState === 'on' ? 'off' : 'on';
+    powerBox.textContent = action === 'on' ? 'Waking the TV…' : 'Turning the TV off…';
+    send('POST', '/tv/power', {action: action}, function (status, text) {
+      var data = {};
+      try { data = JSON.parse(text); } catch (e) {}
+      if (status === 200 && data.power) powerState = data.power;
+      paintPower();
+      if (data.error === 'no mac') say('Turn the TV on once so the Mac can learn it', false);
+      else if (status !== 200 || data.ok === false) say('The TV did not answer', false);
+      else say('', true);
+    }, 25000);
+  }
+  function skyMark(condition) {
+    var c = String(condition || '').toLowerCase();
+    if (c.indexOf('thunder') >= 0 || c.indexOf('storm') >= 0) return '\u26A1';
+    if (c.indexOf('snow') >= 0 || c.indexOf('sleet') >= 0) return '\u2744';
+    if (c.indexOf('rain') >= 0 || c.indexOf('drizzle') >= 0 || c.indexOf('shower') >= 0) return '\u2602';
+    if (c.indexOf('fog') >= 0 || c.indexOf('mist') >= 0 || c.indexOf('cloud') >= 0 || c.indexOf('overcast') >= 0) return '\u2601';
+    return '\u2600';
+  }
+  function prettySaver(kind) {
+    if (kind === 'album') return 'album photo';
+    if (kind === 'live') return 'live weather';
+    return kind || '';
+  }
+  function clearNow(mode, text) {
+    document.getElementById('now-mode').textContent = text;
+    document.getElementById('now-detail').textContent = '';
+    document.getElementById('now-age').textContent = '';
+    document.getElementById('now-photo').style.display = 'none';
+    document.getElementById('now-photo').removeAttribute('src');
+    document.getElementById('now-sky').style.display = 'none';
+  }
+  function showNow(power, status) {
+    var mode = document.getElementById('now-mode');
+    var detail = document.getElementById('now-detail');
+    var age = document.getElementById('now-age');
+    var img = document.getElementById('now-photo');
+    var sky = document.getElementById('now-sky');
+    if (power !== 'on') { clearNow(mode, 'The TV is off'); return; }
+    var received = status && status.received ? status.received : 0;
+    var seconds = received ? Math.round((Date.now() - received) / 1000) : 99;
+    if (!status || !status.view || seconds > 30) { clearNow(mode, 'Nothing recent from the TV'); return; }
+    var label = status.view;
+    if (status.view === 'ambient' && status.ambient) label = 'ambient \u00b7 ' + status.ambient;
+    else if (status.saver) label = status.view + ' \u00b7 ' + prettySaver(status.saver);
+    mode.textContent = label;
+    var lines = [];
+    if (status.weather && status.weather.condition) lines.push(status.weather.condition + (status.weather.temp ? ' ' + status.weather.temp : ''));
+    if (status.app && (status.app.name || status.app.title)) lines.push('Last opened: ' + (status.app.name || status.app.title));
+    detail.textContent = lines.join('\n');
+    age.textContent = 'updated ' + seconds + 's ago';
+    if (status.photo) {
+      sky.style.display = 'none';
+      img.style.display = 'block';
+      if (img.getAttribute('src') !== status.photo) img.setAttribute('src', status.photo);
+    } else {
+      img.style.display = 'none';
+      img.removeAttribute('src');
+      if (status.weather && status.weather.condition) {
+        sky.style.display = 'block';
+        sky.textContent = skyMark(status.weather.condition);
+      } else sky.style.display = 'none';
+    }
+  }
+  function refresh() {
+    send('GET', '/tv/state', null, function (status, text) {
+      var data = {};
+      try { data = JSON.parse(text); } catch (e) {}
+      if (status === 200 && data.power) powerState = data.power;
+      paintPower();
+      send('GET', '/tv/status', null, function (code, body) {
+        var info = {};
+        try { info = JSON.parse(body); } catch (e2) {}
+        showNow(powerState, code === 200 ? info : null);
+      });
+    });
+  }
+  powerBox.onclick = function (e) { e.stopPropagation(); power(); };
+  paintPower();
+  setInterval(refresh, 3000);
+  refresh();
+  document.body.onclick = function (e) {
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    if (t.getAttribute('data-wish')) wish(t.getAttribute('data-wish'), t.getAttribute('data-value'));
+    else if (t.getAttribute('data-scene')) scene(t.getAttribute('data-scene'));
+    else if (t.getAttribute('data-key')) key(t.getAttribute('data-key'));
+  };
+  send('GET', '/lights', null, function (status, text) {
+    var sel = document.getElementById('group'), data, names, i, o;
+    sel.innerHTML = '';
+    o = document.createElement('option'); o.value = ''; o.textContent = 'All rooms'; sel.appendChild(o);
+    if (status !== 200) return;
+    try { data = JSON.parse(text); } catch (e) { return; }
+    names = data.groups || [];
+    for (i = 0; i < names.length; i++) {
+      if (!names[i] || names[i] === 'All') continue;
+      o = document.createElement('option');
+      o.value = names[i];
+      o.textContent = names[i];
+      sel.appendChild(o);
+    }
+  });
+})();
+</script>
+</body>
+</html>

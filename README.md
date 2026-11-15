@@ -28,6 +28,8 @@ Open source. Built with Claude Code. One button to undo.
 - **The status at a glance, and a mouse** (Google TV and Android TV). *Home Settings* → *Status icons* puts Wi-Fi or Ethernet, Bluetooth audio and a USB drive at the top of the home screen; off, nothing listens for them. A mouse or an air-mouse remote works too: hover moves the focus, the wheel scrolls, a click picks.
 - **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
 - **A screensaver to match.** Full-screen photos of the picks with a big glass clock. On LG and Samsung, *Home Settings* → *Screensaver* can make it a large clock with the weather instead, drifting slowly so it doesn't burn into OLED screens. Optionally (*Watch from the screensaver*, in Home Settings), OK opens the title on screen in its app, and any other button just closes it.
+- **Your iCloud album** (LG and Samsung). *Home Settings* → *iCloud photos*: paste a shared album link and the screensaver can play it, with a crossfade or a slow zoom, shuffled or in order. The same photos can sit behind the home screen, dimmed, if you turn that on. It stays off until you do.
+- **Live weather** (LG and Samsung). *Home Settings* → *Screensaver* → *Live weather* plays the real forecast: rain, snow, fog, clouds, a clear day or a clear night, and lightning in a thunderstorm. The same animation can sit quietly on the home screen or over the photos. It starts from Cedar Park, Texas, in °F, until you pick a city.
 - **Dimming for a dark room** (LG and Samsung). *Home Settings* → *Dim* darkens Free My TV's own screens, not the apps you open: low, medium, high, or automatic (medium from 22:00 to 07:00). Off until you pick it.
 - **Your own photos** (Google TV and Android TV). Send them from your computer (up to 100): the screensaver shows them, and without picks one is the home screen's background each hour.
 - **Fast.** 60 fps, every frame in 16.6 ms, on the TV's own chip. The home screen uses 96 MB of memory instead of 242 MB (−60%).<br><sub>Measured on a 98″ TCL Google TV running Android 14.</sub>
@@ -246,6 +248,26 @@ Every 6 hours, when the home screen opens, a new random choice of up to 40 photo
 
 A server given as `http://` must be on your own network (a private address like `192.168.1.20`, or a `.local`, `.lan` or `.home.arpa` name; the build stops otherwise), and only its address may be reached without HTTPS; anything else needs `https://` (over Tailscale, the server's `https://<machine>.<tailnet>.ts.net` address, which Tailscale can serve with a certificate). The app never follows a redirect from it, so the key only goes to that address.
 
+### An iCloud shared album (LG and Samsung)
+
+On a Samsung or LG TV, Free My TV can play a shared iCloud album: full-screen on the screensaver, and, if you ask, slowly behind the home screen.
+
+1. **On your iPhone**, open the album in Photos. Tap the share button, then *Sharing Options*. Turn on *Anyone with the Link* (on older iOS this was *Public Website*) and tap *Copy Album Link*. The link looks like `https://www.icloud.com/sharedalbum/#…`. A newer link, `https://www.icloud.com/shared/album/…`, works too.
+2. **On the TV**, open *Free My TV* → *Home Settings* → *iCloud photos*. Paste the link (or type it) and press *Save*. The TV asks iCloud whether the album is there. *iCloud screensaver* turns on when the first link is saved. *Home background* stays off until you turn it on.
+3. **While you're there**, ← → change how long each photo stays (5, 10, 15, 30 or 60 seconds; 10 is the start), *Shuffle* (on plays them at random, off plays them by date), *Transition* (*Crossfade* or *Slow zoom*) and *Framing*. On For You, *Photos* shows each picture in a pane its own shape, whole, with the date and caption beside it. The screensaver shows the whole photo on a dark field. *Clock* puts a small clock and the date on the screensaver. Behind the home screen the same photos wait at least 15 seconds, so the shelf stays easy to read, with the same soft blur and dim as the picks.
+
+The link stays in the TV's own settings. It is not part of the app you install, and it is not written to the log. Videos in the album are skipped. The list is refreshed about every half hour, because Apple's picture addresses expire and because new photos should show up. If the link is wrong, the album is empty, or the TV is offline, the screensaver and the background stay as they were and *iCloud photos* says why.
+
+Apple only answers these album calls to its own website. On LG, Free My TV asks through its own small service on the TV, so that limit doesn't apply. On Samsung the app asks directly; the package already allows the connection. The photos themselves load as pictures either way.
+
+### Live weather (LG and Samsung)
+
+*Home Settings* → *Screensaver* → *Live weather* fills the screen with the forecast already on the weather card: Open-Meteo, the same source, asked a little more often while this is on. Rain falls harder when more rain is due in the next hour, and the wind leans it. Snow, fog, drifting clouds, a sun, or stars and a moon follow the code and the time of day. When that code says fog but radar shows rain, the sky follows the radar (RainViewer, checked about every 5 minutes). The TV reads the tile itself; if it can't, the lights bridge answers `GET /weather/radar`. A fresh station observation and the 15-minute rain amount are used when the radar is quiet. Fog is shown only when nothing is falling and visibility is low. A thunderstorm adds flashes. Strikes also come when a severe thunderstorm warning from the US National Weather Service covers the spot. *Thunder* (off until you turn it on) is a quiet rumble with each flash.
+
+*Home weather* lays the sky behind the home screen. *Weather on photos* no longer draws over the picture: a photo screensaver stays sharp. Rain on the glass is many tiny beads and a few larger drops that pause, wander, and leave a thin trail. The refraction follows the approach in Lucas Bebber's [RainEffect](https://github.com/codrops/RainEffect) (Codrops, MIT): the slope of a drop texture bends a blurred copy of the sky. Both stay off until you turn them on. *Home content* chooses what fills the space under the header: *Recommendations* (as before), *Live weather* (the sky across the whole screen, with the temperature where that row was), or *Photos* (the shared album). *Weather detail* is Low, Medium or High. If the picture starts to lag, it drops a step on its own. *Preview weather* forces clear, rain, a storm, snow, fog or a clear night, so you can see each one; Automatic goes back to the forecast.
+
+Until you pick a city, a build without one uses Cedar Park, Texas, in °F. *Home Settings* → *City* changes it, and *Temperature* changes the unit. If the forecast can't be reached, the screensaver stays a calm sky and says so.
+
 ### Your Plex library (optional)
 
 Set `plex_url` and `plex_token` in `config.properties`, and one of the newest movies and one of the newest shows of your Plex server (another one each time the list is made, a few times a day, among the latest 8 of each kind) join the picks, with their own poster and backdrop, tagged "Plex". A tab shows at most one. Selecting one opens the title's page in the Plex app. If the server can't be reached when the list is made, its titles are left out.
@@ -323,7 +345,7 @@ It's your code, and Claude Code finds its way around it. Try:
 - **A safety net.** A watchdog in a separate process brings back the stock home screen after three crashes in five minutes, and a boot check keeps your choice after TV updates.
 - **On LG and Samsung, the same design in plain HTML, CSS and JavaScript** ([`web/`](web)), written for the Chromium of older TVs, with no frameworks. [`webos/build.py`](webos/build.py) packs it with `config.properties` into an `.ipk` without LG's tools, and [`webos/install.py`](webos/install.py) installs it through Developer Mode; on LG it lists and opens apps through the TV's own service bus (Luna), as LG's launcher does. [`tizen/build.py`](tizen/build.py) packs the same app into a Samsung `.wgt`, which uses Tizen's web APIs for the apps and the inputs. To preview it on a computer: `python3 webos/build.py --preview`, then open `out/webos/index.html` (a stand-in lists sample apps).
 - **Continue Watching** reads Android TV's Watch Next list (what apps share about what you're watching). Only picking it grants `READ_TV_LISTINGS` through the TV's ADB; *Original* revokes it. Pictures load from the TV (`content://`, `android.resource://`) and from the picture addresses the apps themselves left there (Netflix, for one): `https` only, never an address on your home network, pictures only, with a size and a time limit.
-- **Data** comes only from TMDB (trending titles, new releases, the most popular titles when those are few, and which app streams what in your country), Open-Meteo (forecast, sunrise and sunset), optionally Binance (24-hour prices when `show_crypto=true`), optionally Watchmode (the picks' own pages in their apps, with a `watchmode_key`), optionally your Plex server (with a `plex_url`), optionally your Immich server (your photos, with an `immich_server` and its key) and optionally Trakt (what you're watching and your watchlist, with a `trakt_client_id`, once you sign in on the TV).
+- **Data** comes only from TMDB (trending titles, new releases, the most popular titles when those are few, and which app streams what in your country), Open-Meteo (forecast, sunrise and sunset), optionally Binance (24-hour prices when `show_crypto=true`), optionally Watchmode (the picks' own pages in their apps, with a `watchmode_key`), optionally your Plex server (with a `plex_url`), optionally your Immich server (your photos, with an `immich_server` and its key), optionally Trakt (what you're watching and your watchlist, with a `trakt_client_id`, once you sign in on the TV) and, on LG and Samsung, optionally iCloud (a shared album whose link you paste on the TV; the link stays there).
 
 | File | What it is |
 |---|---|
@@ -373,6 +395,34 @@ reference (fix them by hand); the others were machine-made, and corrections from
   from the right) and numbers are written ٠١٢٣. The Google TV app's layout isn't mirrored yet, so it doesn't offer
   Arabic for now (a TV in Arabic stays in English there). Hebrew and Persian aren't there yet.
 - **Limits:** Chinese, Japanese, Korean, Hindi and Arabic are drawn with the TV's system font (Inter has no such letters).
+
+## Ambient, the top bar, and lights
+
+On LG and Samsung, *Home Settings* → *Ambient* set to Automatic changes what the idle screen becomes. Morning (from the hour you pick) is the shared album with the weather over it, or the live sky if there is no album. Day is the screensaver you already chose. Evening is a clock, the forecast and the next thing on your calendar. Late night is a dim clock. The hours are *Morning from*, *Day from*, *Evening from* and *Night from*. The bedtime button at the top right, and the red colour button when the TV allows it, start that screen at once. Any key comes back home.
+
+The line under the round buttons is the time, the current weather and the next calendar event. The old price counters are not shown. *Home Settings* → *Calendar* is where the calendar address goes (an `https` link ending in `.ics`). It stays on the TV and is never written to the log. If it cannot be read, the line says so and does not show the address.
+
+*Continue watching* lists apps you opened from this screen, newest first, with how long ago. Tizen does not tell another app what is playing or how far a title has got, so there is no progress bar and no real resume point. *Now playing* is not shown for the same reason.
+
+*Match colors* tints the shelf from the photo behind it.
+
+Lights need a small bridge on a Mac on the same network, because the TV cannot send the UDP the bulbs use.
+
+```bash
+mkdir -p ~/.wiz
+printf '%s\n' 'group Living' '192.168.86.21 aabbccddeeff' > ~/.wiz/bulbs.txt
+printf '%s\n' 'choose-a-long-token' > ~/.wiz/token
+python3 tools/wiz_bridge.py --tv 192.168.86.69
+```
+
+The phone page is `http://<the Mac's address>:8787/`. Add it to the iPhone Home Screen. The token from `~/.wiz/token` is typed once on the phone. The power button turns the TV on with a wake packet, or off with the power key. The first time the TV is on, the Mac learns its hardware address and keeps it in `~/.freemytv-bridge/tv_mac`. You can also pass `--tv-mac aa:bb:cc:dd:ee:ff`. On the TV, *Home Settings* → *Lights* gets `http://<the Mac>:8787` and the same token. While Free My TV is open it tells the bridge what is on screen, and the phone shows that under *Now on TV*. Movie, Dim, Warm, Bright and All off are on the home screen and in the drawer. A line `group Name` in `bulbs.txt` names the bulbs under it. To start the bridge at login:
+
+```bash
+python3 tools/wiz_bridge.py --install-login --tv 192.168.86.69
+launchctl load -w ~/Library/LaunchAgents/io.freemytv.wizbridge.plist
+```
+
+The TV's keys from the phone need `pip3 install samsungtvws`. The first press asks you to allow the Mac on the TV. Without that library the lights and the screen buttons still work.
 
 ## Privacy
 

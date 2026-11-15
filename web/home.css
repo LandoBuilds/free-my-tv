@@ -62,13 +62,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #sky .grad { position: absolute; left: 0; top: 0; width: 100%; height: 100%; -webkit-transition: opacity 2s; transition: opacity 2s; }
 #sky .day { background: -webkit-linear-gradient(top, #F5F5F7, #E2E2E7); background: linear-gradient(#F5F5F7, #E2E2E7); }
 #sky .night { background: -webkit-linear-gradient(top, #1C1C1E, #0B0B0D); background: linear-gradient(#1C1C1E, #0B0B0D); opacity: 0; }
-#sky canvas { position: absolute; left: -4%; top: -4%; width: 108%; height: 108%; opacity: 0; -webkit-transition: opacity 0.8s; transition: opacity 0.8s; }
+#sky canvas { position: absolute; left: -1%; top: -1%; width: 102%; height: 102%; opacity: 0; -webkit-transition: opacity 0.8s; transition: opacity 0.8s; }
 #sky canvas.on { opacity: 1; }
-#sky .veil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: rgba(245, 245, 247, 0.74); -webkit-transition: background-color 2s; transition: background-color 2s; }
+#sky .veil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: rgba(245, 245, 247, 0.58); -webkit-transition: background-color 2s; transition: background-color 2s; }
 #sky .lift { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: #FFF; opacity: 0; -webkit-transition: opacity 0.45s, background-color 2s; transition: opacity 0.45s, background-color 2s; }
 .night #sky .day { opacity: 0; }
 .night #sky .night { opacity: 1; }
-.night #sky .veil { background: rgba(11, 11, 13, 0.78); }
+.night #sky .veil { background: rgba(11, 11, 13, 0.62); }
 .night #sky .lift { background: #000; }
 .drawer-open #sky .lift { opacity: 0.32; }
 .night.drawer-open #sky .lift { opacity: 0.42; }
@@ -76,20 +76,136 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* MARK: - Moving parts: the top fades and everything rises when the drawer opens. */
 
 /* Each part is its own stack, so a focused tile (z-index) never shows over the drawer, a sheet or the screensaver. */
-#home { z-index: 1; }
-#drawer { z-index: 2; }
-.sheet { z-index: 3; }
-#saver { z-index: 4; }
+#live { z-index: 0; pointer-events: none; visibility: hidden; }
+#live.on { visibility: visible; background-color: #10141c; opacity: 1; -webkit-transition: opacity 0.4s linear; transition: opacity 0.4s linear; }
+#live.full, #live.glass, #livebolt.full, #livebolt.glass { z-index: 8; }
+/* Home weather is the full 16:9 canvas, under every control. Tizen 6 also needs the UI on its own layer. */
+#live.overlay, #livebolt.overlay { z-index: 0; left: 0; top: 0; width: 1920px; height: 1080px; border-radius: 0; }
+body.weather-home #sky { visibility: hidden; }
+/* Light type: the rain sky behind the header is dark, and the controls sit above that canvas. */
+body.weather-home #title,
+body.weather-home #glance,
+body.weather-home .tab.on { color: #F5F5F7; }
+body.weather-home .tab { color: rgba(245, 245, 247, 0.72); }
+/* The focus pill is white, so the label stays dark on every sky. */
+body.weather-home .tab.focus { color: #1D1D1F; }
+body.weather-home #homephotos .when,
+body.weather-home #homephotos .cap { color: #F5F5F7; }
+body.weather-home #homephotos .ago { color: rgba(245, 245, 247, 0.72); }
+#live.row, #livebolt.row {
+  left: 80px;
+  top: 262px;
+  width: 1760px;
+  height: 442px;
+  z-index: 2;
+  border-radius: 28px;
+}
+#livebolt { pointer-events: none; visibility: hidden; }
+#livebolt.on { visibility: visible; opacity: 1; -webkit-transition: opacity 0.4s linear; transition: opacity 0.4s linear; }
+#homephotos {
+  position: absolute;
+  left: 80px;
+  top: 278px;
+  width: 1760px;
+  height: 530px;
+  visibility: hidden;
+  z-index: 3;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 32px;
+  line-height: 1.2;
+  text-align: left;
+}
+/* The picture fills the gap under the quick buttons, down to the caption. Width follows the photo. */
+#homephotos .pane {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1400px;
+  height: 530px;
+}
+#homephotos .shot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  -webkit-transition: opacity 0.35s linear;
+  transition: opacity 0.35s linear;
+}
+#homephotos .shot.on { opacity: 1; }
+#homephotos .info {
+  position: absolute;
+  left: 0;
+  top: 476px;
+  width: 360px;
+  height: 52px;
+  overflow: hidden;
+  line-height: 1.15;
+  text-align: left;
+}
+#homephotos .when { font-size: 22px; font-weight: 560; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#homephotos .ago { margin-top: 2px; font-size: 18px; font-weight: 500; color: #6E6E73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#homephotos .cap { margin-top: 2px; font-size: 20px; font-weight: 500; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.night #homephotos .when, .night #homephotos .cap { color: #F5F5F7; }
+.night #homephotos .ago { color: rgba(245, 245, 247, 0.62); }
+.rtl #homephotos .pane { left: auto; right: 0; }
+.rtl #homephotos .shot { left: auto; right: 0; }
+.rtl #homephotos .info { text-align: right; }
+body.content-photos #homephotos { visibility: visible; }
+body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
+.drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.plain { opacity: 0; }
+#home { z-index: 4; -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); }
+#homephotos { -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); }
+#drawer { z-index: 6; }
+.sheet { z-index: 8; -webkit-transform: translate3d(0, 0, 0) scale(1.04); transform: translate3d(0, 0, 0) scale(1.04); }
+#saver, #ambient { z-index: 12; -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); }
+#liveinfo {
+  position: absolute;
+  left: 80px;
+  bottom: 80px;
+  z-index: 14;
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  visibility: hidden;
+  padding: 22px 36px 26px;
+  border-radius: 36px;
+  color: #FFF;
+  background: -webkit-linear-gradient(top, rgba(20, 24, 32, 0.55), rgba(20, 24, 32, 0.38));
+  background: linear-gradient(rgba(20, 24, 32, 0.55), rgba(20, 24, 32, 0.38));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+#liveinfo.on { visibility: visible; }
+/* Home weather: the numbers sit in the open, where the banner was, with no frame. */
+#liveinfo.plain {
+  left: 88px;
+  top: 300px;
+  bottom: auto;
+  z-index: 5;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+#liveinfo.plain .temp { font-size: 108px; }
+#liveinfo.plain .cond { font-size: 36px; }
+#liveinfo.plain .meta { font-size: 26px; }
+#liveinfo.plain .hours { margin-top: 28px; }
+#liveinfo.plain .hour { display: inline-block; width: 120px; margin-right: 12px; vertical-align: top; }
+#liveinfo.plain .hour .t { display: block; font-size: 20px; color: rgba(255, 255, 255, 0.72); }
+#liveinfo.plain .hour .n { display: block; margin-top: 4px; font-size: 30px; font-weight: 500; }
+#liveinfo .temp { font-size: 92px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
+#liveinfo .cond { margin-top: 6px; font-size: 32px; font-weight: 500; }
+#liveinfo .meta { margin-top: 8px; font-size: 24px; color: rgba(255, 255, 255, 0.82); }
+#liveinfo .alert { margin-top: 12px; font-size: 24px; font-weight: 600; color: #FFD59A; }
 
 #home, #drawer {
   -webkit-transition: -webkit-transform 0.38s cubic-bezier(0.32, 0.72, 0.2, 1), opacity 0.28s;
   transition: transform 0.38s cubic-bezier(0.32, 0.72, 0.2, 1), opacity 0.28s;
 }
-.drawer-open #home { -webkit-transform: translateY(-560px); transform: translateY(-560px); }
+.drawer-open #home { -webkit-transform: translate3d(0, -560px, 0); transform: translate3d(0, -560px, 0); }
 #top { -webkit-transition: opacity 0.2s; transition: opacity 0.2s; }
 .drawer-open #top { opacity: 0; }
-#drawer { -webkit-transform: translateY(560px); transform: translateY(560px); opacity: 0; }
-.drawer-open #drawer { -webkit-transform: none; transform: none; opacity: 1; }
+#drawer { -webkit-transform: translate3d(0, 560px, 0); transform: translate3d(0, 560px, 0); opacity: 0; }
+.drawer-open #drawer { -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); opacity: 1; }
 /* Closed, it still spans the screen below the shelf: only its keys take the pointer, and only when it's open. */
 #drawer { pointer-events: none; }
 .drawer-open #drawer .key { pointer-events: auto; }
@@ -123,23 +239,34 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   font-weight: 500;
   line-height: 68px;
   color: #6E6E73;
-  -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), background-color 0.17s, box-shadow 0.2s, color 0.17s;
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), background-color 0.17s, box-shadow 0.2s, color 0.17s;
+  -webkit-transition: -webkit-transform 0.08s linear;
+  transition: transform 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
 .tab.on { font-weight: 600; color: #1D1D1F; }
-.tab.focus {
+.tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 34px;
   background: #FFF;
-  color: #1D1D1F;
-  -webkit-transform: scale(1.05);
-  transform: scale(1.05);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.22);
+  opacity: 0;
+  z-index: -1;
+  -webkit-transition: opacity 0.08s linear;
+  transition: opacity 0.08s linear;
 }
+.tab.focus { color: #1D1D1F; -webkit-transform: translateZ(0) scale(1.05); transform: translateZ(0) scale(1.05); }
+.tab.focus::before { opacity: 1; }
 .night #title, .night .tab.on { color: #F5F5F7; }
 .night .tab { color: rgba(245, 245, 247, 0.62); }
-.night .tab.focus { color: #1D1D1F; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4); }
+.night .tab.focus { color: #1D1D1F; }
 
-/* Crypto quotes at the right end of the tab row: a quiet detail. */
+/* The price line used to sit here. It stays hidden; the glance takes this corner. */
 #quotes {
+  display: none;
   position: absolute;
   right: 80px;
   top: 178px;
@@ -159,10 +286,73 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .night #quotes { color: rgba(245, 245, 247, 0.62); }
 .night #quotes svg { fill: rgba(245, 245, 247, 0.55); }
 
-/* Live TV, HDMI Inputs and Settings: glass circles; the focused one turns white, with its name below. */
+/* Clock, weather and the next event share the title row, clear of the round buttons. */
+#glance {
+  position: absolute;
+  right: 80px;
+  top: 28px;
+  width: 560px;
+  line-height: 1.25;
+  text-align: right;
+  color: #1D1D1F;
+}
+#glance .when { font-size: 32px; font-weight: 560; letter-spacing: -0.02em; }
+#glance .wx, #glance .ev { margin-top: 4px; font-size: 22px; font-weight: 500; color: #6E6E73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.night #glance { color: #F5F5F7; }
+.night #glance .wx, .night #glance .ev { color: rgba(245, 245, 247, 0.72); }
+.rtl #glance { right: auto; left: 80px; text-align: left; }
+
+#wash {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transition: opacity 0.8s;
+  transition: opacity 0.8s;
+}
+body.tinted #wash { opacity: 0.34; }
+
+#scenes {
+  position: absolute;
+  right: 80px;
+  top: 248px;
+  width: 640px;
+  text-align: right;
+  z-index: 4;
+  display: none;
+}
+#scenes .scene {
+  display: inline-block;
+  height: 36px;
+  margin-left: 8px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: rgba(16, 20, 28, 0.72);
+  color: #F5F5F7;
+  font-size: 18px;
+  font-weight: 600;
+}
+.card.resume .img { background: #243044; }
+
+#ambient.late { background: #000; }
+#ambient.late .clock, #ambient.late .temp { opacity: 0.55; }
+#ambient.evening .event {
+  position: absolute;
+  left: 108px;
+  top: 590px;
+  width: 900px;
+  font-size: 36px;
+  font-weight: 500;
+  color: rgba(245, 245, 247, 0.8);
+}
+
+/* Live TV, HDMI Inputs and Settings sit under the clock, with the name above the focused one. */
 .round {
   position: absolute;
-  top: 69px;
+  top: 208px;
   width: 68px;
   height: 68px;
   border-radius: 34px;
@@ -170,17 +360,33 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   background: linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.5));
   box-shadow: 0 6px 26px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
   color: #1D1D1F;
-  -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, background-color 0.17s;
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, background-color 0.17s;
+  -webkit-transition: -webkit-transform 0.08s linear;
+  transition: transform 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
-.round .sym { position: absolute; left: 20px; top: 20px; width: 28px; height: 28px; }
-.round.focus { background: #FFF; -webkit-transform: scale(1.1); transform: scale(1.1); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24); }
+.round::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 34px;
+  background: #FFF;
+  opacity: 0;
+  -webkit-transition: opacity 0.08s linear;
+  transition: opacity 0.08s linear;
+}
+.round .sym { position: absolute; left: 20px; top: 20px; width: 28px; height: 28px; z-index: 1; }
+.round.focus { -webkit-transform: translateZ(0) scale(1.08); transform: translateZ(0) scale(1.08); color: #1D1D1F; }
+.round.focus::before { opacity: 1; }
 .round .tip {
   position: absolute;
-  top: 88px;
+  bottom: 78px;
+  top: auto;
   left: 50%;
-  width: 300px;
-  margin-left: -150px;
+  width: 280px;
+  margin-left: -140px;
   text-align: center;
   font-size: 23px;
   font-weight: 600;
@@ -189,7 +395,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   -webkit-transition: opacity 0.14s;
   transition: opacity 0.14s;
 }
-.round.last .tip { left: auto; right: -10px; margin-left: 0; text-align: right; }
+.round.last .tip { left: auto; right: 0; margin-left: 0; text-align: right; }
 .round.focus .tip { opacity: 1; }
 .night .round {
   background: -webkit-linear-gradient(top, rgba(40, 40, 44, 0.8), rgba(17, 17, 19, 0.62));
@@ -197,7 +403,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   box-shadow: 0 6px 26px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.92);
 }
-.night .round.focus { background: #FFF; color: #1D1D1F; }
+.night .round.focus { color: #1D1D1F; }
 .night .round.focus .tip { color: #F5F5F7; }
 
 /* MARK: - Picks: the card with focus is wide, the others narrow (posters); it grows 5%, rises and its edge lights up. */
@@ -214,8 +420,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   position: absolute;
   top: 262px;
   height: 442px;
-  -webkit-transition: -webkit-transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15);
-  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  -webkit-transition: -webkit-transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 .card .img {
   position: absolute;
@@ -229,9 +435,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   background-size: cover;
   background-position: center;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
-  -webkit-transition: box-shadow 0.22s;
-  transition: box-shadow 0.22s;
 }
+.card.focus { -webkit-transform: translateY(-6px) scale(1.05); transform: translateY(-6px) scale(1.05); z-index: 2; }
+.card.focus .img::after { opacity: 1; }
 /* As Backdrop.card(…, 0): taller than the card, a poster keeps its title and the wide card its photo's top. */
 .card .layer {
   position: absolute;
@@ -316,6 +522,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 }
 #clock .date { display: block; font-size: 40px; font-weight: 500; letter-spacing: 0; margin-top: 18px; color: #6E6E73; }
 .no-picks #clock { display: block; }
+body.content-photos #clock, body.content-weather #clock { display: none; }
 .no-key #title, .no-key #tabs { visibility: hidden; }
 .night #clock { color: #F5F5F7; }
 .night #clock .date { color: rgba(245, 245, 247, 0.62); }
@@ -353,9 +560,25 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   overflow: hidden;
   color: #FFF;
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.14);
-  -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, opacity 0.3s;
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, opacity 0.3s;
+  -webkit-transition: -webkit-transform 0.08s linear, opacity 0.08s linear;
+  transition: transform 0.08s linear, opacity 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
+.tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 4px #FFF;
+  opacity: 0;
+  -webkit-transition: opacity 0.08s linear;
+  transition: opacity 0.08s linear;
+  z-index: 2;
+}
+.tile.focus::before { opacity: 1; }
 .tile img { position: absolute; left: 50%; top: 50%; max-width: 76%; max-height: 62%; -webkit-transform: translate(-50%, -50%); transform: translate(-50%, -50%); }
 /* a logo lifted off the TV's icon (home.js): as large as the tile allows */
 .tile img.logo { width: 70%; height: 50%; max-width: none; max-height: none; object-fit: contain; }
@@ -388,10 +611,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   -webkit-transition: opacity 0.17s;
   transition: opacity 0.17s;
 }
-.tile.focus { -webkit-transform: scale(1.2); transform: scale(1.2); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34); z-index: 2; }
+.tile.focus { -webkit-transform: translateZ(0) scale(1.12); transform: translateZ(0) scale(1.12); z-index: 2; }
 .tile.focus::after { opacity: 1; }
 .night .tile { box-shadow: 0 4px 22px rgba(0, 0, 0, 0.3); }
-.night .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6); }
 .more { position: absolute; width: 17px; height: 17px; color: rgba(0, 0, 0, 0.6); }
 .more.back { -webkit-transform: scaleX(-1); transform: scaleX(-1); }
 .night .more { color: rgba(255, 255, 255, 0.8); }
@@ -419,13 +641,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   border-radius: 20px;
   text-align: center;
   color: #1D1D1F;
-  -webkit-transition: -webkit-transform 0.19s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.19s, background-color 0.14s;
-  transition: transform 0.19s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.19s, background-color 0.14s;
+  -webkit-transition: -webkit-transform 0.08s linear;
+  transition: transform 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
 .key .sym { position: absolute; left: 50%; top: 33px; width: 34px; height: 34px; margin-left: -17px; }
 .key .label { position: absolute; left: 8px; right: 8px; top: 82px; font-size: 23px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .key.off { color: #8E8E93; }
-.key.focus { background: #F5F5F7; color: #1C1C1E; -webkit-transform: scale(1.07); transform: scale(1.07); box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42); z-index: 2; }
+.key.focus { color: #1C1C1E; -webkit-transform: translateZ(0) scale(1.06); transform: translateZ(0) scale(1.06); z-index: 2; }
 .night .key { color: rgba(255, 255, 255, 0.95); }
 .night .key.off { color: rgba(255, 255, 255, 0.42); }
 .night .key.focus { color: #1C1C1E; }
@@ -481,12 +704,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   opacity: 0;
   visibility: hidden;
   pointer-events: none; /* while it fades out, the pointer goes to what's under it, not to its rows */
-  -webkit-transform: scale(1.04);
-  transform: scale(1.04);
+  -webkit-transform: translate3d(0, 0, 0) scale(1.04);
+  transform: translate3d(0, 0, 0) scale(1.04);
   -webkit-transition: opacity 0.24s, -webkit-transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), visibility 0s 0.3s;
   transition: opacity 0.24s, transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), visibility 0s 0.3s;
 }
-.sheet.open { opacity: 1; visibility: visible; pointer-events: auto; -webkit-transform: none; transform: none; -webkit-transition-delay: 0s; transition-delay: 0s; }
+.sheet.open { opacity: 1; visibility: visible; pointer-events: auto; -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); -webkit-transition-delay: 0s; transition-delay: 0s; }
 .sheet h2 { position: absolute; left: 0; right: 0; top: 84px; margin: 0; text-align: center; font-size: 40px; font-weight: 600; }
 
 #apps .grid { position: absolute; left: 0; top: 0; width: 1920px; -webkit-transition: -webkit-transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1); transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1); }
@@ -533,7 +756,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .box .row .value .sym { width: 26px; height: 26px; vertical-align: -3px; }
 .box .row.dim { color: rgba(255, 255, 255, 0.4); }
 #about .row .value { font-feature-settings: 'tnum'; }
-#citypick .row.field input, #keypick .row.field input {
+#citypick .row.field input, #keypick .row.field input, #albumpick .row.field input {
   width: 100%;
   height: 70px;
   margin: 0;
@@ -545,10 +768,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   font: inherit;
   line-height: 70px;
 }
-#citypick .row.field, #keypick .row.field { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18); }
-#citypick .row.field input::-webkit-input-placeholder, #keypick .row.field input::-webkit-input-placeholder { color: rgba(255, 255, 255, 0.4); }
-#citypick .row.field input::placeholder, #keypick .row.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
-#citypick .row { overflow: hidden; text-overflow: ellipsis; }
+#citypick .row.field, #keypick .row.field, #albumpick .row.field { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18); }
+#citypick .row.field input::-webkit-input-placeholder, #keypick .row.field input::-webkit-input-placeholder, #albumpick .row.field input::-webkit-input-placeholder { color: rgba(255, 255, 255, 0.4); }
+#citypick .row.field input::placeholder, #keypick .row.field input::placeholder, #albumpick .row.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
+#citypick .row, #albumpick .row { overflow: hidden; text-overflow: ellipsis; }
 #about .row .value.cut { overflow: hidden; text-overflow: ellipsis; }
 .box .hint { padding: 14px 18px 0; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
 .box .hint.warn { color: #FFC266; }
@@ -560,14 +783,15 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* MARK: - Dim: a black layer over the picture, for a dark room (panel brightness needs private APIs) */
 
-#dim { z-index: 6; background: #000; opacity: 0; pointer-events: none; -webkit-transition: opacity 0.5s; transition: opacity 0.5s; }
+#hud { position: absolute; left: 24px; top: 24px; z-index: 12; display: none; padding: 10px 14px; background: rgba(0, 0, 0, 0.78); color: #FFF; font: 22px/1.35 sans-serif; border-radius: 10px; }
+#hud.on { display: block; }
 #dim.d1 { opacity: 0.28; }
 #dim.d2 { opacity: 0.42; }
 #dim.d3 { opacity: 0.55; }
 
 /* MARK: - The clock screensaver: a large clock and the weather, drifting slowly for OLED panels */
 
-#ambient { z-index: 4; background: #050506; opacity: 0; visibility: hidden; -webkit-transition: opacity 1.1s, visibility 0s 1.1s; transition: opacity 1.1s, visibility 0s 1.1s; }
+#ambient { z-index: 12; background: #050506; opacity: 0; visibility: hidden; -webkit-transition: opacity 1.1s, visibility 0s 1.1s; transition: opacity 1.1s, visibility 0s 1.1s; }
 #ambient.on { opacity: 1; visibility: visible; -webkit-transition-delay: 0s; transition-delay: 0s; }
 #ambient .shift { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; -webkit-transition: -webkit-transform 9s linear; transition: transform 9s linear; }
 #ambient .clock { position: absolute; left: 96px; top: 238px; font-size: 232px; font-weight: 200; line-height: 0.96; letter-spacing: -0.025em; color: #F5F5F7; -webkit-font-feature-settings: 'tnum'; font-feature-settings: 'tnum'; }
@@ -580,8 +804,24 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 #saver { background: #000; opacity: 0; visibility: hidden; -webkit-transition: opacity 1.2s, visibility 0s 1.2s; transition: opacity 1.2s, visibility 0s 1.2s; }
 #saver.on { opacity: 1; visibility: visible; -webkit-transition-delay: 0s; transition-delay: 0s; }
-#saver .photo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-size: cover; background-position: center; opacity: 0; -webkit-transition: opacity 2.4s, -webkit-transform 24s linear; transition: opacity 2.4s, transform 24s linear; }
+#saver .photo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0; -webkit-transition: opacity 2.4s, -webkit-transform 24s linear; transition: opacity 2.4s, transform 24s linear; }
 #saver .photo.on { opacity: 1; }
+/* The shared album shows the whole photo on a dark field. No blur layer: a full-screen filter was slow, and one side went black. */
+#saver.album .photo { overflow: hidden; background: #141820; -webkit-transform: none; transform: none; -webkit-transition: opacity 1.2s ease; transition: opacity 1.2s ease; }
+#saver.album .sharp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+#saver.album .clock { bottom: 72px; padding: 18px 32px 20px; border-radius: 32px; }
+#saver.album .clock .time { font-size: 72px; }
+#saver.album .clock .date { margin-top: 6px; font-size: 28px; }
+#saver.album.noclock .clock, #saver.album.noclock .shade { display: none; }
 #saver .shade { position: absolute; left: 0; right: 0; bottom: 0; height: 520px; background: -webkit-linear-gradient(top, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55)); background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.55)); }
 #saver .clock {
   position: absolute;
@@ -643,15 +883,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .layered .card .img { background-color: transparent; box-shadow: none !important; }
 .layered .card .img::after { display: none; }
 .layered .tile { -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.15) !important; transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.15) !important; }
-.layered .card { -webkit-transition: -webkit-transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15) !important; transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15) !important; }
+.layered .card { -webkit-transition: -webkit-transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.15) !important; transition: transform 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.15) !important; }
 .layered #cards {
   -webkit-transition: -webkit-transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
   transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1) !important;
 }
 .layered .card .back { -webkit-transition: opacity 0.45s !important; transition: opacity 0.45s !important; }
 .layered #sky canvas { -webkit-transition: opacity 0.8s !important; transition: opacity 0.8s !important; }
-.layered .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34) !important; }
-.layered .night .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6) !important; }
+.layered .tile.focus, .layered .night .tile.focus { box-shadow: none; }
 
 /* Samsungs up to 2 GB (see tv.js): the parts that move lose their soft shadows, which the TV repainted on every frame of
    a move, and what slides is a layer from the start, so a move starts at once. */

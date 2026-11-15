@@ -416,13 +416,16 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ABOUT: 'about'};
-  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ALBUM: 'album', ABOUT: 'about', TEXT: 'text'};
+  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0, album: 0, text: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ABOUT; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ALBUM || st.zone === Z.ABOUT || st.zone === Z.TEXT; }
 
-  function updateFocus() {
+  var settleQueued = false;
+
+  /** Only the focus class. Nothing here reads layout, so the highlight can paint in this frame. */
+  function markFocus() {
     var i, list;
     list = $('tabs').children;
     for (i = 0; i < list.length; i++) {
@@ -432,26 +435,46 @@
     list = $('buttons').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === 3 + i);
     setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= 3);
-    layoutCards();
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
     list = $('tiles').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.SHELF && st.shelf === i);
-    revealShelf();
-    list = document.querySelectorAll('#drawer .key');
+    list = $('drawer').querySelectorAll('.key');
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.DRAWER && st.drawer === i);
-    list = document.querySelectorAll('#apps .cell');
-    for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.APPS && st.grid === i);
-    var rows = Math.max(1, Math.ceil(others.length / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
-    $('apps').lastChild.style.webkitTransform = $('apps').lastChild.style.transform = 'translateY(' + (-first * 239) + 'px)';
-    focusRows($('settings'), st.row, st.zone === Z.SETTINGS);
-    focusRows($('shelfedit'), st.edit, st.zone === Z.EDIT);
-    focusRows($('langpick'), st.lang, st.zone === Z.LANG);
-    if (langHint) langHint.textContent = I18N.digits((st.lang + 1) + ' / ' + languageChoices().length) + '  ·  ' + tr('OK picks, Back cancels.');
-    focusRows($('citypick'), st.city, st.zone === Z.CITY);
-    focusRows($('keypick'), st.key, st.zone === Z.KEY);
+    if (st.zone === Z.APPS) {
+      list = $('apps').getElementsByClassName('cell');
+      for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.grid === i);
+    }
+    if (st.zone === Z.SETTINGS) focusRows($('settings'), st.row, true);
+    else if (st.zone === Z.EDIT) focusRows($('shelfedit'), st.edit, true);
+    else if (st.zone === Z.LANG) focusRows($('langpick'), st.lang, true);
+    else if (st.zone === Z.CITY) focusRows($('citypick'), st.city, true);
+    else if (st.zone === Z.KEY) focusRows($('keypick'), st.key, true);
+    else if (st.zone === Z.ALBUM) focusRows($('albumpick'), st.album, true);
+    else if (st.zone === Z.TEXT) focusRows($('textpick'), st.text, true);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
-    followSoon();
+  }
+
+  function settleFocus() {
+    if (st.zone === Z.CARDS || (st.zone === Z.TOP && st.top < 3)) layoutCards();
+    if (st.zone === Z.SHELF) revealShelf();
+    if (st.zone === Z.APPS) {
+      var rows = Math.max(1, Math.ceil(others.length / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
+      var grid = $('apps').lastChild;
+      if (grid) grid.style.webkitTransform = grid.style.transform = 'translateY(' + (-first * 239) + 'px)';
+    }
+    if (typeof LiveWeather !== 'undefined' && LiveWeather.setPaused) LiveWeather.setPaused(st.zone === Z.DRAWER || sheetOpen());
+    if (st.zone === Z.CARDS) followSoon();
+    if (langHint && st.zone === Z.LANG) langHint.textContent = I18N.digits((st.lang + 1) + ' / ' + languageChoices().length) + '  ·  ' + tr('OK picks, Back cancels.');
+    reportStatus();
+  }
+
+  function updateFocus() {
+    markFocus();
+    if (settleQueued) return;
+    settleQueued = true;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    raf(function () { settleQueued = false; settleFocus(); });
   }
 
   function focusRows(sheet, index, on) {
@@ -494,30 +517,34 @@
     var buttons = $('buttons');
     buttons.innerHTML = '';
     var own = Prefs.boxInput() !== 'live';
-    var defs = [[own ? 'tv' : 'live_tv', own ? boxLabel() : tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];
-    for (var b = 0; b < 3; b++) {
-      var r = el('button', 'round' + (b === 2 ? ' last' : ''), buttons);
-      startAt(r, 1596 + 88 * b);   // the buttons sit at the end edge of the screen: the right, or the left when mirrored
+    var defs = [
+      ['bedtime', tr('Ambient')],
+      [own ? 'tv' : 'live_tv', own ? boxLabel() : tr('light|Live TV')],
+      ['hdmi', tr('HDMI Inputs')],
+      ['settings', tr('light|Settings')]
+    ];
+    for (var b = 0; b < defs.length; b++) {
+      var r = el('button', 'round' + (b === defs.length - 1 ? ' last' : ''), buttons);
+      startAt(r, 1508 + 88 * b);
       sym(defs[b][0], r);
       el('div', 'tip', r, defs[b][1]);
       hover(r, Z.TOP, 3 + b);
     }
+    renderGlance();
+    renderScenes();
+    if (!currentTint && Prefs.tint()) applyTint(Glance.tintCss(document.body.className.indexOf('night') >= 0 ? 72 : 186, document.body.className.indexOf('night') >= 0 ? 118 : 196, document.body.className.indexOf('night') >= 0 ? 168 : 210));
   }
 
   function renderQuotes() {
-    var q = $('quotes'), coins = Data.activeCoins();
-    q.innerHTML = '';
-    for (var i = 0; i < coins.length; i++) {
-      var item = el('span', 'q', q);
-      coin(coins[i], item);
-      el('span', '', item, Data.compact(Data.prices[coins[i]]));
-    }
+    var q = $('quotes');
+    if (q) q.innerHTML = '';
   }
 
   // MARK: - Picks and background
 
   function renderCards() {
-    var list = Data.picks(TAB_KIND[st.tab]);
+    var picks = Data.picks(TAB_KIND[st.tab]);
+    var list = resumeItems().concat(picks);
     var holder = $('cards');
     setClass(body, 'no-picks', !list.length);
     setClass(body, 'no-key', !Data.hasKey());   // as on Android: no title or tabs that could never show anything
@@ -527,12 +554,17 @@
     if (same && holder.children.length === list.length) return;
     cards = list;
     holder.innerHTML = '';
+    cardsLaid = '';
     for (var c = 0; c < list.length; c++) {
       var p = list[c], card = el('div', 'card', holder);
       var img = el('div', 'img', card);
-      // Narrow: the poster (the backdrop cropped without one); the wide card fades its backdrop in over it, loaded then.
       var poster = el('div', 'layer', img);
-      poster.style.backgroundImage = 'url(' + (p.poster ? Data.image(p.poster, 'w342') : Data.image(p.backdrop, 'w780')) + ')';
+      if (p.resume) {
+        setClass(card, 'resume', true);
+        poster.style.background = '#243044';
+      } else {
+        poster.style.backgroundImage = 'url(' + (p.poster ? Data.image(p.poster, 'w342') : Data.image(p.backdrop, 'w780')) + ')';
+      }
       el('div', 'layer back', img);
       el('div', 'name', card, I18N.name(p.title));
       if (p.meta) el('div', 'meta', card, p.meta);
@@ -540,7 +572,7 @@
     }
     st.card = Math.min(st.card, Math.max(0, list.length - 1));
     if (!list.length && st.zone === Z.CARDS) st.zone = Z.SHELF;
-    backdrop(list.length ? Data.image(list[st.card].backdrop, 'w300') : '');
+    backdrop(list.length && list[st.card] && list[st.card].backdrop ? Data.image(list[st.card].backdrop, 'w300') : '');
     updateFocus();
   }
 
@@ -549,15 +581,20 @@
    * row scrolls a card at a time (the holder slides), and the cards at the edges lose their text. Only the holder's
    * transform and the backdrop's opacity animate: the widths change at once (older TVs).
    */
+  var cardsLaid = '';
+
   function layoutCards() {
     var holder = $('cards'), nodes = holder.children, left = 80, scroll = Math.max(0, st.card - 2) * 360;
+    var mark = st.card + ':' + nodes.length;
+    if (mark === cardsLaid) return;
+    cardsLaid = mark;
     for (var i = 0; i < nodes.length; i++) {
       var wide = i === st.card, w = wide ? 1040 : 320, n = nodes[i], at = left - scroll;
       startAt(n, left);
       n.style.width = w + 'px';
       setClass(n, 'wide', wide);
       setClass(n, 'edge', at < 0 || at > 1740);
-      if (wide && !n.getAttribute('data-back') && cards[i]) {
+      if (wide && !n.getAttribute('data-back') && cards[i] && cards[i].backdrop) {
         n.setAttribute('data-back', '1');
         n.querySelector('.back').style.backgroundImage = 'url(' + Data.image(cards[i].backdrop, 'w1280') + ')';
       }
@@ -566,28 +603,205 @@
     slide(holder, -scroll);
   }
 
+  var spareImg = [];
+
+  function borrowImage() {
+    var img = spareImg.length ? spareImg.pop() : new Image();
+    img.onload = null;
+    img.onerror = null;
+    return img;
+  }
+
+  function releaseImage(img) {
+    if (!img || spareImg.length >= 3) return;
+    img.onload = null;
+    img.onerror = null;
+    spareImg.push(img);
+  }
+
+  function photoSrc(photo, full) {
+    if (!photo) return '';
+    if (full) return photo.url || photo.home || '';
+    return sizedPhoto(photo, 960);
+  }
+
+  /** The picture address for this use. A file much larger than the screen goes through the bridge, which resizes it. */
+  function sizedPhoto(photo, edge) {
+    if (!photo) return '';
+    var direct, have;
+    if (edge <= 220) {
+      direct = photo.tiny || photo.home || photo.url || '';
+      have = photo.tinyEdge || photo.homeEdge || photo.edge || 0;
+    } else if (edge <= 1200) {
+      direct = photo.home || photo.tiny || photo.url || '';
+      have = photo.homeEdge || photo.tinyEdge || photo.edge || 0;
+    } else {
+      direct = photo.url || photo.home || '';
+      have = photo.edge || 0;
+    }
+    if (!direct) return '';
+    if (have && have <= edge * 1.35) return direct;
+    if (typeof Prefs === 'undefined' || !Prefs.wizUrl) return direct;
+    var root = String(Prefs.wizUrl() || '').replace(/\/+$/, '');
+    if (!root) return direct;
+    return root + '/photo?u=' + encodeURIComponent(direct) + '&w=' + edge;
+  }
+
+  var photoReady = {}, photoWait = {}, decodeBusy = false, decodeQueue = [];
+
+  function warmPhoto(photo, edge, done, kind) {
+    var shown = sizedPhoto(photo, edge);
+    var key = shown + (kind ? '|' + kind : '');
+    var direct = (edge <= 220 ? (photo && (photo.tiny || photo.home || photo.url)) : (photo && (photo.home || photo.url))) || '';
+    if (!shown) { if (done) done(null); return; }
+    if (photoReady[key]) { if (done) done(photoReady[key]); return; }
+    var job = {shown: shown, key: key, direct: direct, edge: edge, photo: photo, kind: kind || '', done: done ? [done] : []};
+    var i;
+    for (i = 0; i < decodeQueue.length; i++) if (decodeQueue[i].key === key) {
+      if (done) decodeQueue[i].done.push(done);
+      return;
+    }
+    if (photoWait[key]) { if (done) photoWait[key].push(done); return; }
+    decodeQueue.push(job);
+    pumpDecode();
+  }
+
+  function pumpDecode() {
+    if (decodeBusy || !decodeQueue.length) return;
+    decodeBusy = true;
+    var job = decodeQueue.shift();
+    photoWait[job.key] = job.done;
+    loadPhoto(job.shown, job.direct !== job.shown ? job.direct : '', job, function (slot) {
+      var waiters = photoWait[job.key] || [];
+      photoWait[job.key] = null;
+      if (slot) photoReady[job.key] = slot;
+      var n;
+      for (n = 0; n < waiters.length; n++) waiters[n](slot);
+      decodeBusy = false;
+      setTimeout(pumpDecode, 250);
+    });
+  }
+
+  function loadPhoto(shown, fallback, job, done) {
+    function giveUp() { done(null); }
+    function take(img) {
+      var edge = job.edge, photo = job.photo;
+      var dw = job.kind === 'bg' ? 640 : paneWidth(photo.w || img.width, photo.h || img.height);
+      var dh = job.kind === 'bg' ? 360 : 472;
+      var c = document.createElement('canvas');
+      drawContain(c, img, dw, dh);
+      releaseImage(img);
+      done({canvas: c, url: shown});
+    }
+    function fromUrl(url, again) {
+      if (url.indexOf('/photo?') >= 0) {
+        var x = new XMLHttpRequest();
+        var t0 = Date.now();
+        x.open('GET', url, true);
+        x.responseType = 'blob';
+        x.timeout = 12000;
+        var key = (typeof Prefs !== 'undefined' && Prefs.wizToken) ? Prefs.wizToken() : '';
+        try { if (key) x.setRequestHeader('X-Bridge-Token', key); } catch (e0) {}
+        x.onload = function () {
+          if (typeof Pace !== 'undefined') Pace.note('photo-fetch', Date.now() - t0);
+          if (x.status !== 200 || !x.response) { if (again) fromUrl(again, ''); else giveUp(); return; }
+          var img = borrowImage();
+          var obj = (window.URL || window.webkitURL).createObjectURL(x.response);
+          img.onerror = function () { releaseImage(img); if (again) fromUrl(again, ''); else giveUp(); };
+          img.src = obj;
+          afterDecode(img, function () { take(img); });
+        };
+        x.onerror = x.ontimeout = function () { if (again) fromUrl(again, ''); else giveUp(); };
+        x.send();
+        return;
+      }
+      var img2 = borrowImage();
+      img2.onerror = function () { releaseImage(img2); if (again) fromUrl(again, ''); else giveUp(); };
+      img2.src = url;
+      afterDecode(img2, function () { take(img2); });
+    }
+    fromUrl(shown, fallback);
+  }
+
   var bgUrl = null, bgFront = 'bgA';
 
-  /** The focused pick's photo as the background: drawn tiny and stretched, it's already as soft as a heavy blur. */
-  function backdrop(url) {
-    if (url === bgUrl) return;
-    bgUrl = url;
+  /**
+   * The focused pick's photo as the background, drawn at 640×360 so the full-screen scale stays soft without turning into blobs.
+   * `fit` is the album's framing (fill or the whole photo). Without it the picks draw as they always have.
+   */
+  function backdrop(url, fit) {
+    var key = fit === undefined ? url : url + (fit ? '|fit' : '|fill');
+    if (key === bgUrl) return;
+    bgUrl = key;
     var next = bgFront === 'bgA' ? 'bgB' : 'bgA';
     if (!url) {
       setClass($('bgA'), 'on', false);
       setClass($('bgB'), 'on', false);
       return;
     }
-    var img = new Image();
-    img.onload = function () {
-      if (bgUrl !== url) return;
-      var canvas = $(next), ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    var img = borrowImage();
+    function decoded() {
+      if (bgUrl !== key) { releaseImage(img); return; }
+      var t0 = Date.now();
+      var canvas = $(next), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+      if (fit === undefined) ctx.drawImage(img, 0, 0, w, h);
+      else {
+        var iw = img.width || 1, ih = img.height || 1;
+        var scale = fit ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+        var dw = iw * scale, dh = ih * scale;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      }
+      if (typeof Pace !== 'undefined') Pace.note('photo-draw', Date.now() - t0);
       setClass(canvas, 'on', true);
       setClass($(bgFront), 'on', false);
       bgFront = next;
-    };
+      sampleTint(canvas);
+      releaseImage(img);
+    }
+    if (fit !== undefined) img.onerror = function () { ICloud.noteBroken(); releaseImage(img); };
     img.src = url;
+    afterDecode(img, decoded);
+  }
+
+  var homeTimer = 0, homeIndex = 0;
+
+  /** The album, slowly, behind the shelf. The tiny canvas is the blur; the veil on top keeps the tiles readable. */
+  function startAlbumBackground() {
+    if (homeTimer || !Prefs.icloudHome() || !ICloud.count()) return;
+    homeTimer = 1;
+    function step() {
+      if (!Prefs.icloudHome() || !ICloud.count()) { stopAlbumBackground(); return; }
+      var list = ICloud.playlist();
+      if (!list.length) { stopAlbumBackground(); return; }
+      var photo = list[homeIndex % list.length];
+      homeIndex++;
+      warmPhoto(photo, 640, function (slot) {
+        if (!slot || !Prefs.icloudHome()) return;
+        showReadyBackdrop(slot.canvas, Prefs.icloudFit());
+      }, 'bg');
+      // The home screen turns more slowly than the screensaver: at least 15 seconds, so the shelf stays easy to read.
+      homeTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 15) * 1000);
+    }
+    step();
+  }
+
+  function stopAlbumBackground() {
+    clearTimeout(homeTimer);
+    homeTimer = 0;
+    bgUrl = '';
+  }
+
+  /** Framing changed while a photo is already up: draw that photo again the new way. */
+  function redrawAlbumBackground() {
+    if (!Prefs.icloudHome() || !ICloud.count()) return;
+    var list = ICloud.playlist();
+    if (!list.length) return;
+    bgUrl = '';
+    warmPhoto(list[(homeIndex + list.length - 1) % list.length], 640, function (slot) {
+      if (slot) showReadyBackdrop(slot.canvas, Prefs.icloudFit());
+    }, 'bg');
   }
 
   // As HomeView's bgFollow: the background follows the focused pick.
@@ -596,7 +810,9 @@
   /** The focused pick's photo as the background once the focus has rested on it: a quick run along the row fades once. */
   function followSoon() {
     clearTimeout(bgTimer);
+    if (Prefs.icloudHome() && ICloud.count()) return;
     bgTimer = setTimeout(function () {
+      if (Prefs.icloudHome() && ICloud.count()) return;
       if (cards.length) backdrop(Data.image(cards[Math.min(st.card, cards.length - 1)].backdrop, 'w300'));
     }, BG_FOLLOW_MS);
   }
@@ -605,6 +821,65 @@
     var d = new Date(), c = $('clock');
     c.firstChild.textContent = formatDate('format|h:mm', d.getTime());
     c.lastChild.textContent = formatDate('format|EEEE, MMMM d', d.getTime());
+    renderGlance();
+  }
+
+  function resumeItems() {
+    if (!Prefs.resume() || typeof Glance === 'undefined') return [];
+    return Glance.recent().map(function (r) {
+      var mins = Math.max(1, Math.round((Date.now() - r.at) / 60000));
+      return {id: 'recent:' + r.id, resume: true, appId: r.id, title: r.title, meta: trf('{n} min ago', {n: mins}), backdrop: '', poster: ''};
+    });
+  }
+
+  var glanceKey = '';
+
+  function renderGlance() {
+    var g = $('glance');
+    if (!g || typeof Glance === 'undefined') return;
+    var w = Data.weather, ev = Glance.event();
+    var wx = w ? Data.degrees(w.temp) + '  ·  ' + Data.condition(w.code, w.isDay) : '';
+    var line = ev ? formatDate('format|h:mm', ev.start) + '  ' + ev.title
+      : (Prefs.icalUrl() && Glance.eventProblem()) ? tr("Couldn't read the calendar")
+      : Prefs.icalUrl() ? tr('Nothing coming up') : '';
+    var key = formatDate('format|h:mm', Date.now()) + '|' + wx + '|' + line;
+    if (key === glanceKey && g.children.length) return;
+    glanceKey = key;
+    g.innerHTML = '';
+    el('div', 'when', g, formatDate('format|h:mm', Date.now()));
+    if (wx) el('div', 'wx', g, wx);
+    if (line) el('div', 'ev', g, line);
+  }
+
+  function renderScenes() {
+    var box = $('scenes');
+    if (!box) return;
+    box.innerHTML = '';
+    box.style.display = 'none';
+  }
+
+  var currentTint = '';
+
+  function applyTint(color) {
+    currentTint = color || '';
+    setClass(body, 'tinted', !!currentTint && Prefs.tint());
+    var wash = $('wash');
+    if (wash) wash.style.backgroundColor = currentTint || 'transparent';
+    var tiles = $('tiles') ? $('tiles').children : [], i;
+    for (i = 0; i < tiles.length; i++) {
+      if (!shelf[i] || !shelf[i].color || !currentTint || !Prefs.tint()) tiles[i].style.background = '';
+      else tiles[i].style.background = Glance.mixCss(shelf[i].color, currentTint, 0.4);
+    }
+  }
+
+  function sampleTint(canvas) {
+    if (!Prefs.tint() || !canvas) { applyTint(''); return; }
+    try {
+      var ctx = canvas.getContext('2d'), data = ctx.getImageData(4, 4, 20, 14).data;
+      var r = 0, g = 0, b = 0, n = 0, i;
+      for (i = 0; i < data.length; i += 16) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
+      if (n) applyTint(Glance.tintCss(r / n, g / n, b / n));
+    } catch (e) {}
   }
 
   /** On the minute, so the clock never runs late (the 30-second refresh could, by up to 30 s). */
@@ -653,6 +928,7 @@
     }
     st.shelf = Math.min(st.shelf, Math.max(0, shelf.length - 1));
     placeTiles();
+    if (currentTint) applyTint(currentTint);
   }
 
   /** The row slides (a transform on #tiles, which old TVs animate), and the apps it takes past the glass fade out. */
@@ -696,6 +972,14 @@
     drawerItems.push({label: tr('All Apps'), symbol: 'apps', run: openApps});
     drawerItems.push({label: tr('Home Settings'), symbol: 'settings', run: openSettings});
     if (TV.canOpenSettings) drawerItems.push({label: tr('TV Settings'), symbol: 'tv_settings', run: tvSettings});
+    if (Prefs.wizUrl()) {
+      var lights = [['movie', tr('Movie')], ['dim', tr('Dim')], ['warm', tr('Warm')], ['bright', tr('Bright')], ['off', tr('All off')]];
+      for (var L = 0; L < lights.length; L++) {
+        (function (id, label) {
+          drawerItems.push({label: label, symbol: 'lightbulb', run: function () { Glance.sendScene(id); }});
+        })(lights[L][0], lights[L][1]);
+      }
+    }
     var n = drawerItems.length, gap = 18, groupGap = 56, groups = drawerInputs > 0 && drawerInputs < n ? 2 : 1;
     var tw = Math.min(230, (1760 - Math.max(0, n - groups) * gap - (groups - 1) * groupGap) / Math.max(1, n));
     var xPos = 80;
@@ -785,6 +1069,7 @@
     var parts = [], rain = Data.rainIn(Date.now());
     // 0: it rains now, which the line above says; -1: no rain in the two hours ahead; null: the forecast doesn't reach.
     if (rain > 0) parts.push(trf('Rain in ~{time}', {time: trf('{n} min', {n: Math.max(5, Math.round(rain / 5) * 5)})}));
+    if (typeof w.feels === 'number' && Math.abs(w.feels - w.temp) >= 2) parts.push(trf('Feels like {temp}', {temp: Data.degrees(w.feels)}));
     if (w.uv >= 3 && w.isDay) parts.push(trf('UV {n}', {n: Math.round(w.uv)}));   // the day's highest, so not at night
     var air = Data.air;
     // 51 is where the US AQI says moderate: good air is what a weather card needn't spell out.
@@ -875,11 +1160,74 @@
     setClass($('about'), 'open', false);
     closeField('citypick');
     closeField('keypick');
+    closeField('albumpick');
+    closeField('textpick');
     setClass($('citypick'), 'open', false);
     setClass($('keypick'), 'open', false);
+    setClass($('albumpick'), 'open', false);
+    setClass($('textpick'), 'open', false);
     langHint = null;
     st.zone = Z.SHELF;
     updateFocus();
+    // Home weather is refused while a sheet is open. Leaving Settings is what turns it on.
+    syncLive();
+  }
+
+  var textKind = 'ical';
+
+  function textRows() { return textKind === 'wiz' ? 3 : 2; }
+
+  function renderText() {
+    var box = $('textpick').firstChild;
+    box.innerHTML = '';
+    el('div', 'title', box, textKind === 'wiz' ? tr('Lights') : tr('Calendar'));
+    var list = el('div', 'list', box), holder = el('div', 'rows', list);
+    list.style.height = textRows() * 78 + 'px';
+    if (textKind === 'wiz') {
+      textField(holder, Z.TEXT, Prefs.wizUrl(), tr('Paste the bridge address'), tr('Lights'));
+      var token = textField(holder, Z.TEXT, Prefs.wizToken(), tr('Bridge token'), tr('Bridge token'));
+      token.type = 'password';
+      hover(token.parentNode, Z.TEXT, 1);
+    } else {
+      textField(holder, Z.TEXT, Prefs.icalUrl(), tr('Paste the calendar link'), tr('Calendar'));
+    }
+    var save = el('div', 'row', holder, tr('Save'));
+    hover(save, Z.TEXT, textRows() - 1);
+    el('div', 'hint', box, tr('OK picks, Back cancels.'));
+    updateFocus();
+  }
+
+  function openText(kind) {
+    textKind = kind;
+    setClass($('settings'), 'open', false);
+    st.zone = Z.TEXT;
+    st.text = 0;
+    $('textpick').firstChild.innerHTML = '';
+    renderText();
+    setClass($('textpick'), 'open', true);
+    openField('textpick');
+  }
+
+  function closeText() {
+    closeField('textpick');
+    setClass($('textpick'), 'open', false);
+    openSettings();
+    for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].text === textKind) st.row = i;
+    updateFocus();
+  }
+
+  function saveText() {
+    var fields = $('textpick').querySelectorAll('input');
+    if (textKind === 'wiz') {
+      Prefs.set('wizUrl', fields[0] ? String(fields[0].value || '').replace(/^\s+|\s+$/g, '') : '');
+      Prefs.set('wizToken', fields[1] ? String(fields[1].value || '') : '');
+      renderScenes();
+      renderDrawer();
+    } else {
+      Prefs.set('icalUrl', fields[0] ? String(fields[0].value || '').replace(/^\s+|\s+$/g, '') : '');
+      Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
+    }
+    closeText();
   }
 
   // MARK: - Home Settings
@@ -903,8 +1251,40 @@
         }},
       {label: tr('Dim'), value: dimName(),
         step: function (d) { cycle('dim', ['off', 'low', 'medium', 'high', 'auto'], Prefs.dim(), d); applyDim(); }},
-      {label: tr('Screensaver'), value: saverMode() === 'clock' ? tr('Clock') : tr('Photos'),
-        step: function (d) { cycle('saver', ['photos', 'clock'], saverMode(), d); }},
+      {label: tr('Screensaver'), value: saverLabel(),
+        step: function (d) { cycle('saver', ['photos', 'clock', 'live'], saverMode(), d); syncLive(); }},
+      {label: tr('Home weather'), toggle: Prefs.liveHome(),
+        step: function () { Prefs.set('liveHome', !Prefs.liveHome()); syncLive(); }},
+      {label: tr('Weather on photos'), toggle: Prefs.livePhotos(),
+        step: function () { Prefs.set('livePhotos', !Prefs.livePhotos()); syncLive(); }},
+      {label: tr('Weather detail'), value: liveQualityLabel(),
+        step: function (d) { cycle('liveQuality', ['low', 'medium', 'high'], Prefs.liveQuality(), d); syncLive(); }},
+      {label: tr('Thunder'), toggle: Prefs.liveSound(),
+        step: function () { Prefs.set('liveSound', !Prefs.liveSound()); }},
+      {label: tr('Preview weather'), value: liveForceLabel(),
+        step: function (d) { cycle('liveForce', ['auto', 'clear', 'rain', 'storm', 'snow', 'fog', 'night'], Prefs.liveForce(), d); pushScene(); }},
+      {label: tr('Home content'), value: homeShowLabel(),
+        step: function (d) { cycle('homeShow', ['picks', 'weather', 'photos'], Prefs.homeShow(), d); applyHomeContent(); }},
+      {label: tr('Ambient'), value: Prefs.ambient() === 'auto' ? tr('Automatic') : tr('Off'),
+        step: function (d) { cycle('ambient', ['off', 'auto'], Prefs.ambient(), d); }},
+      {label: tr('Morning from'), value: I18N.digits(Prefs.ambientHour('ambientMorning', 6)),
+        step: function (d) { Prefs.set('ambientMorning', (Prefs.ambientHour('ambientMorning', 6) + (d || 1) + 24) % 24); }},
+      {label: tr('Day from'), value: I18N.digits(Prefs.ambientHour('ambientDay', 11)),
+        step: function (d) { Prefs.set('ambientDay', (Prefs.ambientHour('ambientDay', 11) + (d || 1) + 24) % 24); }},
+      {label: tr('Evening from'), value: I18N.digits(Prefs.ambientHour('ambientEvening', 17)),
+        step: function (d) { Prefs.set('ambientEvening', (Prefs.ambientHour('ambientEvening', 17) + (d || 1) + 24) % 24); }},
+      {label: tr('Night from'), value: I18N.digits(Prefs.ambientHour('ambientNight', 22)),
+        step: function (d) { Prefs.set('ambientNight', (Prefs.ambientHour('ambientNight', 22) + (d || 1) + 24) % 24); }},
+      {label: tr('Calendar'), value: Prefs.icalUrl() ? tr('Save') : tr('Not set'), opens: true, text: 'ical',
+        step: function (d) { if (d >= 0) openText('ical'); }},
+      {label: tr('Match colors'), toggle: Prefs.tint(),
+        step: function () { Prefs.set('tint', !Prefs.tint()); if (!Prefs.tint()) applyTint(''); }},
+      {label: tr('Continue watching'), toggle: Prefs.resume(),
+        step: function () { Prefs.set('resume', !Prefs.resume()); renderCards(); }},
+      {label: tr('Lights'), value: Prefs.wizUrl() ? tr('Save') : tr('Not set'), opens: true, text: 'wiz',
+        step: function (d) { if (d >= 0) openText('wiz'); }},
+      {label: tr('iCloud photos'), value: icloudStatus(), opens: true, icloud: true,
+        step: function (d) { if (d >= 0) openAlbum(); }},
       {label: tr('Picks per tab'), value: String(I18N.digits(Prefs.cards())),
         step: function (d) { Prefs.set('cards', 3 + (Prefs.cards() - 3 + (d || 1) + 4) % 4); renderCards(); }},
       {label: tr('Cartoons and anime'), toggle: !Prefs.hideAnimation(),
@@ -918,7 +1298,7 @@
       {label: tr('Forecast'), value: Prefs.forecast() === 'days' ? tr('Next days') : tr('Next hours'),
         step: function (d) { cycle('forecast', ['hours', 'days'], Prefs.forecast(), d); renderPanels(); }},
       {label: tr('Quotes widget'), toggle: Prefs.quotes(),
-        step: function () { Prefs.set('quotes', !Prefs.quotes()); Data.settingsChanged(); }}
+        step: function () { Prefs.set('quotes', !Prefs.quotes()); Data.settingsChanged(); renderPanels(); }}
     ];
     var names = ['Bitcoin', 'Ethereum', 'Solana', tr('Dollar')];
     var count = Data.currency === 'BRL' ? 4 : 3;
@@ -1297,6 +1677,189 @@
     else askRemoveKey(true);
   }
 
+  // MARK: - iCloud shared album: the link, and how the screensaver and the home background use it
+
+  var albumRowsNow = [], albumStatus = '', albumWarn = false, albumTimer = 0, albumSeq = 0;
+  var INTERVALS = [5, 10, 15, 30, 60];
+
+  function icloudStatus() {
+    if (!Prefs.icloudAlbum()) return tr('Not set');
+    var err = ICloud.problem();
+    if (err === 'offline') return tr('Offline');
+    if (err === 'empty') return tr('No photos');
+    if (err === 'refused' || err === 'invalid') return tr('Check the link');
+    var title = ICloud.title();
+    if (title.length > 28) title = title.substring(0, 27) + '…';
+    return title || tr('Saved');
+  }
+
+  function icloudHint() {
+    var err = ICloud.problem();
+    if (albumStatus) return albumStatus;
+    if (!Prefs.icloudAlbum()) return '';
+    if (err === 'offline') return tr("Couldn't reach iCloud.");
+    if (err === 'empty') return tr('This album has no photos.');
+    if (err === 'refused' || err === 'invalid') return tr('iCloud refused this link.');
+    return '';
+  }
+
+  function albumSteps() {
+    return tr('On your iPhone, open the shared album, then Sharing Options, Anyone with the Link, and Copy Album Link.');
+  }
+
+  /** The field, Save, Remove when a link is kept, then the way the photos play. */
+  function albumRows() {
+    var rows = [{field: true}, {label: tr('Save'), save: true}];
+    if (Prefs.icloudAlbum()) rows.push({label: tr('Remove the album'), remove: true});
+    rows.push(
+      {label: tr('iCloud screensaver'), toggle: Prefs.icloudSaver(), key: 'icloudSaver'},
+      {label: tr('Home background'), toggle: Prefs.icloudHome(), key: 'icloudHome'},
+      {label: tr('Photo every'), value: trf('{n} seconds', {n: Prefs.icloudInterval()}), interval: true},
+      {label: tr('Shuffle'), toggle: Prefs.icloudShuffle(), key: 'icloudShuffle'},
+      {label: tr('Transition'), value: Prefs.icloudKen() ? tr('Slow zoom') : tr('Crossfade'), transition: true},
+      {label: tr('Framing'), value: Prefs.icloudFit() ? tr('Whole photo') : tr('Fill the screen'), framing: true},
+      {label: tr('Clock'), toggle: Prefs.icloudClock(), key: 'icloudClock'}
+    );
+    return rows;
+  }
+
+  function renderAlbum() {
+    var box = $('albumpick').firstChild, old = fieldOf('albumpick'), typed = old ? old.value : '', inField = typingIn('albumpick');
+    box.innerHTML = '';
+    el('div', 'title', box, tr('iCloud photos'));
+    var list = el('div', 'list', box), holder = el('div', 'rows', list);
+    albumRowsNow = albumRows();
+    list.style.height = Math.min(albumRowsNow.length, 7) * 78 + 'px';
+    for (var i = 0; i < albumRowsNow.length; i++) {
+      var r = albumRowsNow[i], row;
+      if (r.field) {
+        var field = textField(holder, Z.ALBUM, typed, tr('Paste the shared album link'), tr('iCloud photos'));
+        field.setAttribute('autocapitalize', 'none');
+        field.setAttribute('autocorrect', 'off');
+        continue;
+      }
+      row = el('div', 'row', holder, r.label);
+      if (r.toggle !== undefined) setClass(el('div', 'toggle', row), 'on', r.toggle);
+      else if (r.value) {
+        var v = el('span', 'value', row);
+        el('span', 'chev', v, '‹');
+        v.appendChild(document.createTextNode(r.value));
+        el('span', 'chev', v, '›');
+      } else forward(el('span', 'value', row));
+      hover(row, Z.ALBUM, i);
+    }
+    var hint = icloudHint();
+    if (hint) setClass(el('div', 'hint', box, hint), 'warn', albumWarn || (!albumStatus && !!ICloud.problem()));
+    el('div', 'hint steps', box, albumSteps());
+    if (inField) openField('albumpick');
+    updateFocus();
+  }
+
+  function openAlbum() {
+    setClass($('settings'), 'open', false);
+    st.zone = Z.ALBUM;
+    st.album = 0;
+    albumStatus = '';
+    albumWarn = false;
+    $('albumpick').firstChild.innerHTML = '';
+    renderAlbum();
+    setClass($('albumpick'), 'open', true);
+    openField('albumpick');
+  }
+
+  function setAlbumStatus(text, warn) {
+    albumStatus = text;
+    albumWarn = !!warn;
+    clearTimeout(albumTimer);
+    if (text && text !== tr('Checking the album…')) albumTimer = setTimeout(function () {
+      albumStatus = '';
+      if (st.zone === Z.ALBUM) renderAlbum();
+    }, 6000);
+    if (st.zone === Z.ALBUM) renderAlbum();
+  }
+
+  function closeAlbum() {
+    closeField('albumpick');
+    setClass($('albumpick'), 'open', false);
+    albumSeq++;
+    clearTimeout(albumTimer);
+    albumStatus = '';
+    albumWarn = false;
+    var f = fieldOf('albumpick');
+    if (f) f.value = '';
+    openSettings();
+    for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].icloud) st.row = i;
+    updateFocus();
+  }
+
+  function saveAlbum() {
+    var f = fieldOf('albumpick'), typed = f ? f.value : '';
+    closeField('albumpick');
+    if (!typed.replace(/^\s+|\s+$/g, '')) { st.album = 0; openField('albumpick'); updateFocus(); return; }
+    if (!ICloud.parseLink(typed)) { setAlbumStatus(tr("That doesn't look like an iCloud album link."), true); return; }
+    if (albumStatus === tr('Checking the album…')) return;
+    setAlbumStatus(tr('Checking the album…'));
+    var mine = ++albumSeq, previous = Prefs.icloudAlbum(), saverWas = Prefs.icloudSaver();
+    var trimmed = typed.replace(/^\s+|\s+$/g, '');
+    Prefs.set('icloudAlbum', trimmed);
+    if (!previous) Prefs.set('icloudSaver', true);
+    ICloud.sync(function () {
+      if (mine !== albumSeq || st.zone !== Z.ALBUM) return;
+      var err = ICloud.problem();
+      // A link Apple doesn't know is put back, so a typo doesn't replace an album that was working.
+      if (err === 'refused' || err === 'invalid') {
+        Prefs.set('icloudAlbum', previous);
+        Prefs.set('icloudSaver', saverWas);
+        ICloud.sync();
+        setAlbumStatus(tr('iCloud refused this link.'), true);
+        return;
+      }
+      if (f) f.value = '';
+      if (err === 'offline') setAlbumStatus(tr("Couldn't reach iCloud."), true);
+      else if (err === 'empty') setAlbumStatus(tr('This album has no photos.'), true);
+      else setAlbumStatus(tr('Saved. The screensaver can show these photos.'));
+    });
+  }
+
+  function removeAlbum() {
+    Prefs.set('icloudAlbum', '');
+    Prefs.set('icloudSaver', false);
+    Prefs.set('icloudHome', false);
+    stopAlbumBackground();
+    followSoon();
+    ICloud.sync();
+    closeAlbum();
+  }
+
+  function stepAlbum(row, d) {
+    if (row.key) {
+      Prefs.set(row.key, !Prefs[row.key]());
+      if (row.key === 'icloudHome') { if (Prefs.icloudHome()) startAlbumBackground(); else { stopAlbumBackground(); followSoon(); } }
+      if (row.key === 'icloudShuffle') ICloud.reframe();
+      return;
+    }
+    if (row.interval) {
+      var n = Prefs.icloudInterval(), i = INTERVALS.indexOf(n);
+      if (i < 0) i = 1;
+      Prefs.set('icloudInterval', INTERVALS[(i + (d || 1) + INTERVALS.length) % INTERVALS.length]);
+      return;
+    }
+    if (row.transition) { Prefs.set('icloudTransition', Prefs.icloudKen() ? 'fade' : 'ken'); return; }
+    if (row.framing) {
+      Prefs.set('icloudAspect', Prefs.icloudFit() ? 'fill' : 'fit');
+      redrawAlbumBackground();
+    }
+  }
+
+  function activateAlbum() {
+    var row = albumRowsNow[st.album];
+    if (!row) return;
+    if (row.field) openField('albumpick');
+    else if (row.save) saveAlbum();
+    else if (row.remove) removeAlbum();
+    else { stepAlbum(row, 1); renderAlbum(); }
+  }
+
   // MARK: - About this TV: what to quote when reporting a problem, without LG's or Samsung's slow menus
 
   function renderAbout(info) {
@@ -1465,6 +2028,7 @@
 
   function pickTarget(p) {
     if (!p) return null;
+    if (p.resume) return {app: {id: p.appId, title: p.title}, params: null};
     var via = Prefs.openPicks() === 'nuvio' ? nuvio() : null;
     var app = via || Data.appFor(p.app);
     if (!app) return null;
@@ -1493,6 +2057,8 @@
   function launcher(id, name, params) {
     return function () {
       lookingUp = '';
+      if (typeof Glance !== 'undefined') Glance.noteLaunch(id, name);
+      reportStatus();
       TV.launch(id, params || null, function (ok) {
         if (!ok) toast(trf("Couldn't open {app}.", {app: I18N.name(name || id)}));
       });
@@ -1556,8 +2122,9 @@
     switch (st.zone) {
       case Z.TOP:
         if (st.top < 3) return;
-        if (st.top === 3) { var box2 = boxTV(); if (box2) launcher(box2.id, boxLabel())(); }
-        else if (st.top === 4) { st.zone = Z.SHELF; openDrawer(); st.drawer = firstPort(); updateFocus(); }
+        if (st.top === 3) startScreen();
+        else if (st.top === 4) { var box2 = boxTV(); if (box2) launcher(box2.id, boxLabel())(); }
+        else if (st.top === 5) { st.zone = Z.SHELF; openDrawer(); st.drawer = firstPort(); updateFocus(); }
         else openSettings();
         return;
       case Z.CARDS:
@@ -1588,6 +2155,16 @@
       case Z.KEY:
         activateKey();
         return;
+      case Z.ALBUM:
+        activateAlbum();
+        return;
+      case Z.TEXT:
+        if (st.text === textRows() - 1) saveText();
+        else {
+          var inputs = $('textpick').querySelectorAll('input');
+          if (inputs[st.text]) inputs[st.text].focus();
+        }
+        return;
       case Z.ABOUT:
         closeAbout();
         return;
@@ -1617,7 +2194,7 @@
         if (dx) st.shelf = Math.max(0, Math.min(shelf.length - 1, st.shelf + dx));
         else if (dy > 0) { openDrawer(); return; }
         else if (dy < 0) {
-          if (cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
+          if (Prefs.homeShow() === 'picks' && cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
           else { st.zone = Z.TOP; st.top = Data.hasKey() ? st.tab : 3; }
         }
         break;
@@ -1628,10 +2205,10 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(Data.hasKey() ? 0 : 3, Math.min(5, st.top + dx));   // without the picks the tabs can't hold focus
+          st.top = Math.max(Data.hasKey() ? 0 : 3, Math.min(6, st.top + dx));   // without the picks the tabs can't hold focus
           if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
-          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
+          if (Prefs.homeShow() === 'picks' && cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
           else st.zone = Z.SHELF;
         }
         break;
@@ -1665,6 +2242,16 @@
       case Z.KEY:
         if (dy) st.key = Math.max(0, Math.min(keyRows() - 1, st.key + dy));
         break;
+      case Z.ALBUM:
+        if (dy) st.album = Math.max(0, Math.min(albumRowsNow.length - 1, st.album + dy));
+        else if (dx && albumRowsNow[st.album] && !albumRowsNow[st.album].field && !albumRowsNow[st.album].save && !albumRowsNow[st.album].remove) {
+          stepAlbum(albumRowsNow[st.album], dx);
+          renderAlbum();
+        }
+        break;
+      case Z.TEXT:
+        if (dy) st.text = Math.max(0, Math.min(textRows() - 1, st.text + dy));
+        break;
     }
     updateFocus();
   }
@@ -1681,6 +2268,8 @@
     if (st.zone === Z.LANG) { closeLanguages(false); return; }
     if (st.zone === Z.CITY) { closeCities(false); return; }
     if (st.zone === Z.KEY) { if (keyAsking) askRemoveKey(false); else closeKey(); return; }
+    if (st.zone === Z.ALBUM) { closeAlbum(); return; }
+    if (st.zone === Z.TEXT) { closeText(); return; }
     if (st.zone === Z.ABOUT) { closeAbout(); return; }
     if (sheetOpen()) { closeSheets(); return; }
     if (st.zone === Z.DRAWER) { closeDrawer(); return; }
@@ -1691,7 +2280,7 @@
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
     node.onmouseover = function () {
-      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ABOUT))) return;
+      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ALBUM || zone === Z.ABOUT || zone === Z.TEXT))) return;
       if (zone === Z.DRAWER && st.zone !== Z.DRAWER) return;
       if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
       if (zone === Z.TOP && index < 3 && !Data.hasKey()) return;   // the tabs are hidden without the picks
@@ -1707,6 +2296,7 @@
       else if (zone === Z.LANG) st.lang = index;
       else if (zone === Z.CITY) st.city = index;
       else if (zone === Z.KEY) st.key = index;
+      else if (zone === Z.ALBUM) st.album = index;
       updateFocus();
     };
     node.onclick = function () { node.onmouseover(); activate(); };
@@ -1741,6 +2331,32 @@
   /** "photos" (the picks' photos, as it always was) or "clock": what the screen shows when nobody touches it. */
   function saverMode() { return Prefs.saver(); }
 
+  function saverLabel() {
+    var m = saverMode();
+    return m === 'clock' ? tr('Clock') : m === 'live' ? tr('Live weather') : tr('Photos');
+  }
+
+  function liveQualityLabel() {
+    var q = Prefs.liveQuality();
+    return q === 'low' ? tr('dim|Low') : q === 'high' ? tr('dim|High') : tr('dim|Medium');
+  }
+
+  function homeShowLabel() {
+    var m = Prefs.homeShow();
+    return m === 'weather' ? tr('Live weather') : m === 'photos' ? tr('Photos') : tr('Recommendations');
+  }
+
+  function liveForceLabel() {
+    var f = Prefs.liveForce();
+    if (f === 'rain') return tr('Rain');
+    if (f === 'storm') return tr('Thunderstorms');
+    if (f === 'snow') return tr('Snow');
+    if (f === 'fog') return tr('Fog');
+    if (f === 'clear') return tr('Clear');
+    if (f === 'night') return tr('Clear night');
+    return tr('Automatic');
+  }
+
   /** Dim, as the person picked it: off, low, medium, high, or automatic (medium from 22:00 to 07:00). */
   function dimName() {
     var v = Prefs.dim();
@@ -1765,14 +2381,30 @@
     return Data.showcase().filter(function (p) { return p.backdrop && Data.usable(p.app); });
   }
 
-  function showSaver() {
+  var saverGen = 0;
+
+  /** A picture address safe to put in a CSS url(). Apple's are already escaped; anything odd is skipped. */
+  function cssUrl(url) {
+    if (!url || /["'()\\\s]/.test(url)) return '';
+    return 'url("' + url + '")';
+  }
+
+  function resetSaverChrome() {
+    var s = $('saver');
+    setClass(s, 'album', false);
+    setClass(s, 'fit', false);
+    setClass(s, 'noclock', false);
+  }
+
+  /** The picks' photos, as the screensaver has always shown them. */
+  function showPickSaver() {
     var photos = saverPhotos();
     saverOn = true;
     saverPick = null;
     var s = $('saver');
     s.innerHTML = '';
+    resetSaverChrome();
     var a = el('div', 'photo', s), b = el('div', 'photo', s);
-    el('div', 'shade', s);
     var clock = el('div', 'clock', s);
     el('div', 'time', clock);
     el('div', 'date', clock);
@@ -1803,6 +2435,131 @@
     }
     setClass(s, 'on', true);
     next();
+    syncLive();
+  }
+
+  /** Where a slow zoom starts and ends. Fill moves further; fit stays gentle so the letterbox isn't cropped away. */
+  function kenAt(index, end, fit) {
+    var odd = index % 2;
+    if (fit) return end ? (odd ? 'scale(1.04) translate(-1%, 0)' : 'scale(1.04) translate(1%, 0)') : 'scale(1)';
+    if (end) return odd ? 'scale(1.06) translate(-2%, -1%)' : 'scale(1.14) translate(1.5%, 1%)';
+    return odd ? 'scale(1.12) translate(1.5%, 1%)' : 'scale(1.06) translate(-1%, -1%)';
+  }
+
+  /** A slow drift that never scales the photo past the screen, so the whole picture stays visible. */
+  function albumKen(index, end) {
+    var odd = index % 2;
+    var shift = odd ? '0.8%' : '-0.8%';
+    if (end) return 'scale(1) translate(' + shift + ', 0)';
+    return 'scale(0.98) translate(' + (odd ? '-0.8%' : '0.8%') + ', 0)';
+  }
+
+  function albumFrame(parent) {
+    var photo = el('div', 'photo', parent);
+    el('div', 'sharp', photo);
+    return photo;
+  }
+
+  /** The shared album, full screen: a crossfade, and a slow zoom when that transition is picked. */
+  function showAlbumSaver() {
+    var list = ICloud.playlist();
+    if (!list.length) { showPickSaver(); return; }
+    saverOn = true;
+    saverPick = null;
+    var s = $('saver'), gen = ++saverGen;
+    s.innerHTML = '';
+    setClass(s, 'album', true);
+    setClass(s, 'fit', Prefs.icloudFit());
+    setClass(s, 'noclock', !Prefs.icloudClock());
+    var a = albumFrame(s), b = albumFrame(s);
+    var clock = el('div', 'clock', s);
+    el('div', 'time', clock);
+    el('div', 'date', clock);
+    var front = a, index = 0, skips = 0;
+    function fallback() {
+      hideSaver();
+      if (saverMode() === 'clock') showAmbient(); else showPickSaver();
+    }
+    function advance() {
+      if (!saverOn || gen !== saverGen) return;
+      list = ICloud.playlist();
+      if (!list.length) { fallback(); return; }
+      if (index > 0 && index % list.length === 0 && Prefs.icloudShuffle()) ICloud.reshuffle();
+      list = ICloud.playlist();
+      if (!list.length) { fallback(); return; }
+      var photo = list[index % list.length], n = index++;
+      var big = photoSrc(photo, true);
+      shownPhoto = big;
+      reportStatus();
+      var back = front === a ? b : a;
+      var ken = Prefs.icloudKen(), ms = Prefs.icloudInterval() * 1000;
+      var shown = cssUrl(big);
+      var sharp = back.querySelector('.sharp');
+      var img = borrowImage();
+      img.onload = function () {
+        if (!saverOn || gen !== saverGen || !shown) return;
+        skips = 0;
+        sharp.style.backgroundImage = shown;
+        sharp.style.webkitTransition = sharp.style.transition = 'none';
+        sharp.style.webkitTransform = sharp.style.transform = ken ? albumKen(n, false) : 'scale(1)';
+        setTimeout(function () {
+          if (!saverOn || gen !== saverGen) return;
+          if (ken) {
+            sharp.style.webkitTransition = '-webkit-transform ' + ms + 'ms linear';
+            sharp.style.transition = 'transform ' + ms + 'ms linear';
+            sharp.style.webkitTransform = sharp.style.transform = albumKen(n, true);
+          }
+          setClass(back, 'on', true);
+          setClass(front, 'on', false);
+          front = back;
+          releaseImage(img);
+        }, 40);
+      };
+      img.onerror = function () {
+        releaseImage(img);
+        if (!saverOn || gen !== saverGen) return;
+        ICloud.noteBroken();
+        if (++skips >= list.length) { fallback(); return; }
+        clearTimeout(saverTimer);
+        advance();
+      };
+      saverTimer = setTimeout(advance, ms);
+      tickSaverClock(clock);
+      if (shown) img.src = big;
+      else img.onerror();
+    }
+    setClass(s, 'on', true);
+    advance();
+    syncLive();
+  }
+
+  var ambientGlass = false, ambientKind = '', calendarAt = 0, shownPhoto = '', statusSig = '', statusSent = 0;
+
+  function showMorning() {
+    ambientGlass = true;
+    if (ICloud.count()) showAlbumSaver();
+    else showLiveSaver();
+  }
+
+  function showSaver() {
+    if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+    else showPickSaver();
+  }
+
+  function startScreen() {
+    var ph = Glance.phase(new Date().getHours(), {
+      morning: Prefs.ambientHour('ambientMorning', 6),
+      day: Prefs.ambientHour('ambientDay', 11),
+      evening: Prefs.ambientHour('ambientEvening', 17),
+      night: Prefs.ambientHour('ambientNight', 22)
+    });
+    if (ph === 'morning') showMorning();
+    else if (ph === 'evening') showAmbient('evening');
+    else if (ph === 'night') showAmbient('night');
+    else if (saverMode() === 'live') showLiveSaver();
+    else if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+    else if (saverMode() === 'clock') showAmbient('clock');
+    else showSaver();
   }
 
   function tickSaverClock(clock) {
@@ -1813,16 +2570,348 @@
 
   function hideSaver() {
     saverOn = false;
+    ambientGlass = false;
+    shownPhoto = '';
+    saverGen++;
     clearTimeout(saverTimer);
     setClass($('saver'), 'on', false);
+    syncLive();
+    reportStatus();
+  }
+
+  /** The forecast, as drops and a sky. Full screen when the screensaver is Live weather; otherwise only the drops. */
+  function pushScene() {
+    var w = Data.weather, force = Prefs.liveForce();
+    var code = w && typeof w.code === 'number' ? w.code : null, day = w ? w.isDay : true;
+    var mm = w ? Data.nextHourMm() : null;
+    if ((mm === null || mm === 0) && w && w.precip) mm = w.precip;
+    LiveWeather.scene({
+      kind: LiveWeather.kind(code, force),
+      night: LiveWeather.night(day, force),
+      rate: LiveWeather.rate(mm, LiveWeather.kind(code, force) === 'rain' || LiveWeather.kind(code, force) === 'storm' || LiveWeather.kind(code, force) === 'snow'),
+      wind: w && w.wind || 0,
+      dir: w && w.windDir || 0
+    });
+    renderLiveInfo();
+  }
+
+  function syncLive() {
+    var full = saverOn && saverMode() === 'live';
+    var over = !full && !ambientOn && !sheetOpen() && ((saverOn && Prefs.livePhotos()) || (!saverOn && Prefs.liveHome()));
+    if (document.hidden || resting()) {
+      LiveWeather.setMode('off');
+      setClass($('liveinfo'), 'on', false);
+      setClass(body, 'weather-home', false);
+      return;
+    }
+    var feature = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
+    if (full) LiveWeather.setMode('full', Prefs.liveQuality());
+    else if (!saverOn && !ambientOn && (feature || (!sheetOpen() && Prefs.liveHome()))) LiveWeather.setMode('overlay', Prefs.liveQuality());
+    else LiveWeather.setMode('off');
+    pushScene();
+    setClass(body, 'weather-home', LiveWeather.mode() === 'overlay' || feature);
+    setClass($('liveinfo'), 'on', full || feature);
+    setClass($('liveinfo'), 'plain', feature);
+    setClass($('liveinfo'), 'tucked', false);
+    if (full || over || feature) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
+    reportStatus();
+  }
+
+  function renderLiveInfo() {
+    var box = $('liveinfo'), w = Data.weather;
+    if (!box) return;
+    box.innerHTML = '';
+    if (!w) { el('div', 'cond', box, tr('No weather data right now.')); return; }
+    el('div', 'temp', box, Data.degrees(w.temp));
+    el('div', 'cond', box, Data.condition(w.code, w.isDay));
+    var feels = typeof w.feels === 'number' ? trf('Feels like {temp}', {temp: Data.degrees(w.feels)}) : '';
+    var meta = (feels ? feels + '   ' : '') + trf('H:{max}', {max: Data.degrees(w.max)}) + '   ' + trf('L:{min}', {min: Data.degrees(w.min)});
+    el('div', 'meta', box, meta);
+    var mm = Data.nextHourMm();
+    if (mm > 0) el('div', 'meta', box, trf('{n} mm in the next hour', {n: Math.round(mm * 10) / 10}));
+    var alert = LiveWeather.alert();
+    if (alert) el('div', 'alert', box, alert);
+    if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
+    if (!saverOn && Prefs.homeShow() === 'weather') {
+      var daily = Prefs.forecast() === 'days' && w.days && w.days.length;
+      var src = daily ? w.days : w.hours;
+      if (src && src.length) {
+        var strip = el('div', 'hours', box), n = Math.min(5, src.length), i, cell;
+        for (i = 0; i < n; i++) {
+          cell = el('div', 'hour', strip);
+          el('span', 't', cell, daily ? Data.weekday(src[i].at) : Data.hour(src[i].at));
+          el('span', 'n', cell, Data.degrees(daily ? src[i].max : src[i].temp));
+        }
+      }
+    }
+  }
+
+  var homePhotoTimer = 0, homePhotoAt = 0, bannerGen = 0, bannerReady = null;
+
+  function applyHomeContent() {
+    var mode = Prefs.homeShow();
+    setClass(body, 'content-weather', mode === 'weather');
+    setClass(body, 'content-photos', mode === 'photos');
+    if (mode !== 'picks' && st.zone === Z.CARDS) st.zone = Z.SHELF;
+    if (mode === 'photos') startHomePhotos();
+    else stopHomePhotos();
+    syncLive();
+    updateFocus();
+  }
+
+  function showReadyBackdrop(src, fit) {
+    var key = 'ready';
+    bgUrl = key;
+    var next = bgFront === 'bgA' ? 'bgB' : 'bgA';
+    var canvas = $(next), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+    var t0 = Date.now();
+    var iw = src.width || 1, ih = src.height || 1;
+    var scale = fit ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+    var dw = iw * scale, dh = ih * scale;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(src, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    if (typeof Pace !== 'undefined') Pace.note('photo-blit', Date.now() - t0);
+    setClass(canvas, 'on', true);
+    setClass($(bgFront), 'on', false);
+    bgFront = next;
+    sampleTint(canvas);
+  }
+
+  function paintReadyBanner(box, photo, slot) {
+    bannerNodes(box);
+    showBannerText(box, photo);
+    var shots = box.querySelectorAll('.shot');
+    if (!shots || shots.length < 2 || !slot || !slot.canvas) return;
+    var back = shots[0].className.indexOf('on') >= 0 ? shots[1] : shots[0];
+    var front = back === shots[0] ? shots[1] : shots[0];
+    var t0 = Date.now();
+    var ctx = back.getContext('2d');
+    if (!ctx) return;
+    if (back.width !== slot.canvas.width || back.height !== slot.canvas.height) {
+      back.width = slot.canvas.width;
+      back.height = slot.canvas.height;
+    }
+    ctx.drawImage(slot.canvas, 0, 0);
+    if (typeof Pace !== 'undefined') Pace.note('photo-blit', Date.now() - t0);
+    var info = box.querySelector('.info');
+    if (info) info.style.width = slot.canvas.width + 'px';
+    setClass(back, 'on', true);
+    setClass(front, 'on', false);
+  }
+
+  function startHomePhotos() {
+    if (homePhotoTimer) return;
+    function step() {
+      if (Prefs.homeShow() !== 'photos') { homePhotoTimer = 0; return; }
+      var box = $('homephotos'), list = ICloud.playlist();
+      if (!list.length) {
+        box.innerHTML = '';
+        box.textContent = tr('No album yet');
+        homePhotoTimer = setTimeout(step, 2000);
+        return;
+      }
+      var photo = list[homePhotoAt % list.length];
+      var src = sizedPhoto(photo, 960);
+      if (!photoReady[src]) {
+        warmPhoto(photo, 960);
+        homePhotoTimer = setTimeout(step, 300);
+        return;
+      }
+      homePhotoAt++;
+      shownPhoto = src;
+      reportStatus();
+      paintReadyBanner(box, photo, photoReady[src]);
+      var nxt = list[homePhotoAt % list.length];
+      homePhotoTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 8) * 1000);
+      setTimeout(function () { if (nxt) warmPhoto(nxt, 960); }, 800);
+    }
+    step();
+  }
+
+  /** Width of the photo pane: the banner height times the picture's shape, capped so the date still fits. */
+  function paneWidth(w, h) {
+    var ratio = w > 0 && h > 0 ? w / h : 1.5;
+    var width = Math.round(472 * ratio);
+    if (width > 1400) width = 1400;
+    if (width < 280) width = 280;
+    return width;
+  }
+
+  function relativeAgo(ms) {
+    var span = Date.now() - ms;
+    if (span < 0) span = 0;
+    var days = Math.floor(span / 86400000);
+    if (days >= 365) return plural('plural|one:{n} year ago|other:{n} years ago', Math.floor(days / 365));
+    if (days >= 30) return plural('plural|one:{n} month ago|other:{n} months ago', Math.floor(days / 30));
+    if (days >= 1) return plural('plural|one:{n} day ago|other:{n} days ago', days);
+    var hours = Math.floor(span / 3600000);
+    if (hours >= 1) return trf('{n} h ago', {n: hours});
+    var mins = Math.floor(span / 60000);
+    if (mins >= 1) return trf('{n} min ago', {n: mins});
+    return '';
+  }
+
+  function bannerNodes(box) {
+    if (box.querySelector('.pane')) return;
+    box.textContent = '';
+    var pane = el('div', 'pane', box);
+    var a = el('canvas', 'shot', pane);
+    var b = el('canvas', 'shot', pane);
+    a.width = 8;
+    a.height = 8;
+    b.width = 8;
+    b.height = 8;
+    var info = el('div', 'info', box);
+    el('div', 'when', info);
+    el('div', 'ago', info);
+    el('div', 'cap', info);
+  }
+
+  function afterDecode(img, done) {
+    var t0 = Date.now();
+    function finish() {
+      if (typeof Pace !== 'undefined') Pace.note('photo-decode', Date.now() - t0);
+      done();
+    }
+    if (img.decode) {
+      var pending = img.decode();
+      if (pending && pending.then) { pending.then(finish, finish); return; }
+    }
+    if (img.complete && img.width) { finish(); return; }
+    img.onload = finish;
+  }
+
+  function drawContain(canvas, img, w, h) {
+    var ctx = canvas.getContext('2d'), t0 = Date.now();
+    if (!ctx) return;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    var iw = img.width || 1, ih = img.height || 1;
+    var scale = Math.min(w / iw, h / ih);
+    var dw = Math.round(iw * scale), dh = Math.round(ih * scale);
+    ctx.fillStyle = '#1c2430';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, Math.round((w - dw) / 2), Math.round((h - dh) / 2), dw, dh);
+    if (typeof Pace !== 'undefined') Pace.note('photo-draw', Date.now() - t0);
+  }
+
+  function preloadBanner(photo) {
+    var url = photoSrc(photo, false);
+    if (!url) return;
+    if (bannerReady && bannerReady.url === url) return;
+    var img = borrowImage();
+    function decoded() {
+      setTimeout(function () {
+        if (bannerReady && bannerReady.url === url) { releaseImage(img); return; }
+        var c = document.createElement('canvas');
+        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 472);
+        bannerReady = {url: url, canvas: c};
+        releaseImage(img);
+      }, 0);
+    }
+    img.onerror = function () { releaseImage(img); };
+    img.src = url;
+    afterDecode(img, decoded);
+    try { if (img.decode) img.decode(); } catch (e) {}
+  }
+
+  function showBannerText(box, photo) {
+    var when = box.querySelector('.when');
+    var ago = box.querySelector('.ago');
+    var cap = box.querySelector('.cap');
+    var ms = Date.parse(photo && photo.date || '');
+    if (ms) {
+      when.style.display = 'block';
+      when.textContent = formatDate('format|MMMM d, yyyy', ms);
+      var rel = relativeAgo(ms);
+      ago.style.display = rel ? 'block' : 'none';
+      ago.textContent = rel;
+    } else {
+      when.style.display = 'none';
+      when.textContent = '';
+      ago.style.display = 'none';
+      ago.textContent = '';
+    }
+    var caption = photo && photo.caption ? String(photo.caption) : '';
+    cap.style.display = caption ? 'block' : 'none';
+    cap.textContent = caption;
+    var info = box.querySelector('.info');
+    if (info) {
+      var width = paneWidth(photo && photo.w, photo && photo.h);
+      info.style.width = width + 'px';
+      info.style.left = rtl ? 'auto' : '0px';
+      info.style.right = rtl ? '0px' : 'auto';
+    }
+  }
+
+  /** The whole photo, already scaled, fading in. The pane does not change width, so the row is not laid out again. */
+  function paintBanner(box, photo) {
+    bannerNodes(box);
+    showBannerText(box, photo);
+    var shots = box.querySelectorAll('.shot');
+    var back = shots[0].className.indexOf('on') >= 0 ? shots[1] : shots[0];
+    var front = back === shots[0] ? shots[1] : shots[0];
+    var shown = photoSrc(photo, false);
+    if (!shown) return;
+    var mine = ++bannerGen;
+    function reveal(src) {
+      if (mine !== bannerGen || Prefs.homeShow() !== 'photos') return;
+      var ctx = back.getContext('2d');
+      if (!ctx) return;
+      if (back.width !== src.width || back.height !== src.height) {
+        back.width = src.width;
+        back.height = src.height;
+      }
+      ctx.drawImage(src, 0, 0);
+      var info = box.querySelector('.info');
+      if (info) info.style.width = src.width + 'px';
+      setClass(back, 'on', true);
+      setClass(front, 'on', false);
+    }
+    if (bannerReady && bannerReady.url === shown) { reveal(bannerReady.canvas); return; }
+    var img = borrowImage();
+    function decoded() {
+      setTimeout(function () {
+        var c = document.createElement('canvas');
+        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 472);
+        bannerReady = {url: shown, canvas: c};
+        reveal(c);
+        releaseImage(img);
+      }, 0);
+    }
+    img.onerror = function () { ICloud.noteBroken(); releaseImage(img); };
+    img.src = shown;
+    afterDecode(img, decoded);
+    try { if (img.decode) img.decode(); } catch (e2) {}
+  }
+
+  function stopHomePhotos() {
+    clearTimeout(homePhotoTimer);
+    homePhotoTimer = 0;
+  }
+
+  function showLiveSaver() {
+    hideAmbient();
+    saverOn = true;
+    saverPick = null;
+    var s = $('saver');
+    s.innerHTML = '';
+    resetSaverChrome();
+    setClass(s, 'on', true);
+    syncLive();
   }
 
   // MARK: - The clock screensaver: a clock, the date and the weather, drifting slowly for OLED panels
 
   var ambientOn = false, ambientTimer = 0;
 
-  function showAmbient() {
-    if (ambientOn) return;
+  function showAmbient(kind) {
+    kind = kind || 'clock';
+    if (ambientOn && ambientKind === kind) return;
+    if (ambientOn) { ambientOn = false; clearInterval(ambientTimer); }
     var a = $('ambient');
     a.innerHTML = '';
     var shift = el('div', 'shift', a);
@@ -1831,10 +2920,16 @@
     var side = el('div', 'side', shift);
     el('div', 'temp', side);
     el('div', 'cond', side);
+    if (kind === 'evening') el('div', 'event', shift);
+    ambientKind = kind;
+    setClass(a, 'late', kind === 'night');
+    setClass(a, 'evening', kind === 'evening');
     ambientOn = true;
     setClass(a, 'on', true);
     ambientTimer = setInterval(tickAmbient, 30000);
     tickAmbient();
+    syncLive();
+    reportStatus();
   }
 
   function tickAmbient() {
@@ -1845,16 +2940,57 @@
     // The forecast as it is now (a new one comes every 30 minutes), and only with the weather card on, as on Android.
     a.querySelector('.temp').textContent = w ? Data.degrees(w.temp) : '';
     a.querySelector('.cond').textContent = w ? Data.condition(w.code, w.isDay) : '';
+    var ev = a.querySelector('.event'), item = Glance.event();
+    if (ev) ev.textContent = item ? (formatDate('format|h:mm', item.start) + '  ' + item.title) : (Prefs.icalUrl() ? tr('Nothing coming up') : '');
     // A clock that never moves burns into an OLED: the drift of Android's clock without photos (40 × 26 px, 10 minutes).
     var phase = 2 * Math.PI * (d.getTime() / 1000 % 600) / 600, shift = a.querySelector('.shift');
     shift.style.webkitTransform = shift.style.transform =
       'translate(' + Math.round(40 * Math.sin(phase)) + 'px,' + Math.round(26 * Math.sin(2 * phase + 0.7)) + 'px)';
   }
 
+  function reportStatus(force) {
+    if (typeof Glance === 'undefined' || !Prefs.wizUrl() || resting()) return;
+    var view = 'home';
+    if (sheetOpen()) view = 'settings';
+    else if (ambientOn) view = 'ambient';
+    else if (saverOn) view = 'screensaver';
+    var saverType = '';
+    if (saverOn) {
+      var saver = $('saver');
+      if (saver && saver.className.indexOf('album') >= 0) saverType = 'album';
+      else if (LiveWeather.mode() === 'full') saverType = 'live';
+      else saverType = saverMode();
+    }
+    if (view === 'home' && Prefs.homeShow() === 'photos' && shownPhoto) saverType = 'album';
+    else if (view === 'home' && Prefs.homeShow() === 'weather') saverType = 'live';
+    var recent = Glance.recent(), last = recent.length ? recent[0] : null, w = Data.weather;
+    var card = st.zone === Z.CARDS ? cards[st.card] : null;
+    var app = (card && card.resume) ? {name: card.title, title: card.title} : (last ? {name: last.title, title: last.title} : null);
+    var photo = saverType === 'album' ? shownPhoto : '';
+    var sig = view + '|' + (ambientOn ? ambientKind : '') + '|' + saverType + '|' + photo + '|' +
+      (app ? app.name : '') + '|' + (w ? Data.degrees(w.temp) + Data.condition(w.code, w.isDay) : '');
+    var due = Date.now() - statusSent > 20000;
+    if (!force && sig === statusSig && !due) return;
+    statusSig = sig;
+    statusSent = Date.now();
+    Glance.pushStatus({
+      at: Date.now(),
+      view: view,
+      ambient: ambientOn ? (ambientKind || '') : '',
+      saver: saverType,
+      photo: photo,
+      weather: w ? {temp: Data.degrees(w.temp), condition: Data.condition(w.code, w.isDay)} : null,
+      app: app
+    });
+  }
+
   function hideAmbient() {
     ambientOn = false;
+    ambientKind = '';
     clearInterval(ambientTimer);
     setClass($('ambient'), 'on', false);
+    syncLive();
+    reportStatus();
   }
 
   function poke(ok) {
@@ -1869,9 +3005,69 @@
 
   // MARK: - Keys
 
+  var hud = null, hudOn = false, hudFrames = 0, hudFps = 0, hudStamp = 0, hudText = '', hudRain = 0, hudRainMark = 0;
+
+  function nowMs() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+
+  function paintHud() {
+    if (!hud) return;
+    var rain = (typeof LiveWeather !== 'undefined' && LiveWeather.stats) ? LiveWeather.stats() : null;
+    var slow = (typeof Pace !== 'undefined') ? Pace.read() : null;
+    var gapWhen = '';
+    if (rain && rain.gapAt) {
+      var gd = new Date(rain.gapAt);
+      function z2(n) { return n < 10 ? '0' + n : '' + n; }
+      gapWhen = ' @' + z2(gd.getHours()) + ':' + z2(gd.getMinutes()) + ':' + z2(gd.getSeconds());
+    }
+    var line = 'ui ' + hudFps + '   rain ' + hudRain
+      + (rain ? '   reinit ' + rain.inits + '   gap ' + rain.gap + ' ms' + gapWhen : '')
+      + (slow && slow.ms ? '\n' + slow.label + ' ' + slow.ms + ' ms' : '')
+      + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
+    if (hud.textContent !== line) hud.textContent = line;
+  }
+
+  function hudLoop() {
+    if (!hudOn) return;
+    hudFrames++;
+    var now = Date.now();
+    if (!hudStamp) hudStamp = now;
+    if (now - hudStamp >= 500) {
+      hudFps = Math.round(hudFrames * 1000 / (now - hudStamp));
+      var draws = (typeof LiveWeather !== 'undefined' && LiveWeather.drawn) ? LiveWeather.drawn() : 0;
+      hudRain = Math.round((draws - hudRainMark) * 1000 / (now - hudStamp));
+      hudRainMark = draws;
+      hudFrames = 0;
+      hudStamp = now;
+      paintHud();
+    }
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 32); };
+    raf(hudLoop);
+  }
+
+  function toggleHud() {
+    hudOn = !hudOn;
+    if (!hud) {
+      hud = document.createElement('div');
+      hud.id = 'hud';
+      document.body.appendChild(hud);
+    }
+    setClass(hud, 'on', hudOn);
+    if (hudOn) { hudFrames = 0; hudStamp = 0; hudLoop(); }
+  }
+
+  function hudNote(sync, paint) {
+    hudText = 'key ' + Math.round(sync) + ' ms   paint ' + Math.round(paint) + ' ms';
+    paintHud();
+  }
+
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    var t0 = nowMs();
+    if (k === 405) { toggleHud(); e.preventDefault(); return; }
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
+    if (!saverOn && !ambientOn && !sheetOpen() && k === 403) { startScreen(); e.preventDefault(); return; }
     if (typing(k)) return;
     if (k === TV.keys.left) move(-1, 0);
     else if (k === TV.keys.right) move(1, 0);
@@ -1881,6 +3077,11 @@
     else if (k === TV.keys.back || k === 27 || k === 8) back();
     else return;
     e.preventDefault();
+    if (hudOn) {
+      var sync = nowMs() - t0;
+      var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+      raf(function () { hudNote(sync, nowMs() - t0); });
+    }
   });
   document.addEventListener('mousemove', function () { poke(); });
 
@@ -1889,12 +3090,20 @@
    * its Cancel or ↑ ↓ leave the field. Samsung's keyboard sends Done as 65376 and Cancel as 65385. True: handled here.
    */
   function typing(k) {
-    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : '';
-    if (!sheet || !typingIn(sheet)) return false;
-    if (k === TV.keys.ok || k === 65376) { if (st.zone === Z.CITY) searchCity(); else saveKey(); }
+    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : st.zone === Z.ALBUM ? 'albumpick' : st.zone === Z.TEXT ? 'textpick' : '';
+    if (!sheet) return false;
+    var inputs = $(sheet).querySelectorAll('input'), typingNow = false, i;
+    for (i = 0; i < inputs.length; i++) if (document.activeElement === inputs[i]) typingNow = true;
+    if (!typingNow) return false;
+    if (k === TV.keys.ok || k === 65376) {
+      if (st.zone === Z.CITY) searchCity();
+      else if (st.zone === Z.KEY) saveKey();
+      else if (st.zone === Z.TEXT) saveText();
+      else saveAlbum();
+    }
     else if (k === TV.keys.back || k === 27 || k === 65385) { closeField(sheet); updateFocus(); }
     else if (k === TV.keys.up || k === TV.keys.down) { closeField(sheet); move(0, k === TV.keys.up ? -1 : 1); }
-    return true;   // anything else types into the field
+    return true;
   }
 
   // MARK: - Start
@@ -1950,6 +3159,7 @@
     renderQuotes();
     renderCards();
     renderPanels();
+    renderGlance();
     checkNight();
   });
 
@@ -1982,10 +3192,11 @@
     // relaunch) shows the home screen, never a screensaver that started while the app was out of sight.
     hideSaver();
     hideAmbient();
-    if (document.hidden) return;
+    if (document.hidden) { syncLive(); return; }
     idleAt = Date.now();
     TV.noteChannel();   // back from the viewer: the antenna channel it played, for Live TV
     if (TV.name === 'tizen') { renderClock(); checkNight(); applyDim(); }   // what resting() left as it was
+    syncLive();   // a start that happened while the page was hidden never reached the weather
     loadApps(function () { renderShelf(); renderDrawer(); updateFocus(); Data.refresh(); });
   });
 
@@ -1994,7 +3205,53 @@
   I18N.setClock(Prefs.clockFormat());
   checkNight();   // now, from the last forecast: not after the TV lists its apps, with the day look until then
   // LG's screensaver waits only when ours will show: not under a sheet (ours waits there), and not without photos.
-  TV.holdScreenSaver(function () { return !sheetOpen() && (saverMode() === 'clock' || saverPhotos().length > 0); });
+  TV.holdScreenSaver(function () {
+    return !sheetOpen() && (saverMode() === 'clock' || saverMode() === 'live' || saverPhotos().length > 0 || (Prefs.icloudSaver() && ICloud.count() > 0));
+  });
+  ICloud.onChange(function () {
+    if (st.zone === Z.SETTINGS) renderSettings();
+    if (st.zone === Z.ALBUM && !typingIn('albumpick')) renderAlbum();
+    if (Prefs.icloudHome() && ICloud.count()) startAlbumBackground();
+  });
+  ICloud.boot();
+  LiveWeather.boot($('live'));
+  function refreshSky() {
+    if (resting()) return;
+    var lat = parseFloat(Prefs.latitude()), lon = parseFloat(Prefs.longitude()), w = Data.weather;
+    LiveWeather.refreshAlert(lat, lon);
+    LiveWeather.refreshConditions({
+      lat: lat,
+      lon: lon,
+      modelCode: w && typeof w.modelCode === 'number' ? w.modelCode : (w && typeof w.code === 'number' ? w.code : null),
+      minuteMm: Data.minuteNow()
+    }, function (choice) { Data.applySky(choice); });
+  }
+  refreshSky();
+  try {
+    if (window.tizen && window.tizen.tvinputdevice) {
+      window.tizen.tvinputdevice.registerKey('ColorF0Red');
+      window.tizen.tvinputdevice.registerKey('ColorF2Yellow');
+    }
+  } catch (e) {}
+  if (Prefs.icalUrl()) Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
+  setInterval(function () {
+    var pollAt = Date.now();
+    if (resting() || !Prefs.wizUrl()) return;
+    reportStatus();
+    Glance.pullWish(function (w) {
+      if (!w) return;
+      if ((w.homeShow === 'picks' || w.homeShow === 'weather' || w.homeShow === 'photos') && Prefs.homeShow() !== w.homeShow) {
+        Prefs.set('homeShow', w.homeShow);
+        applyHomeContent();
+      }
+      if (w.saver === 'photos' || w.saver === 'clock' || w.saver === 'live') Prefs.set('saver', w.saver);
+      if (w.ambient === 'start' && !saverOn && !ambientOn) startScreen();
+      if (w.ambient === 'off') { hideSaver(); hideAmbient(); }
+    });
+    if (typeof Pace !== 'undefined') Pace.note('bridge-poll', Date.now() - pollAt);
+  }, 12000);
+  applyHomeContent();
+  Data.onChange(function () { if (LiveWeather.mode() !== 'off') pushScene(); });
   fit();
   renderTop();
   applyDim();
@@ -2012,13 +3269,32 @@
     // Only on screen: behind another app nobody presses our keys, so idleAt grows old and the screensaver would start
     // there, turning photos every 12 s for nothing while Netflix or YouTube plays.
     if (!document.hidden && !saverOn && !ambientOn && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) {
-      if (saverMode() === 'clock') showAmbient(); else showSaver();
+      if (Prefs.ambient() === 'auto') startScreen();
+      else if (saverMode() === 'live') showLiveSaver();
+      else if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+      else if (saverMode() === 'clock') showAmbient('clock'); else showSaver();
     }
-    if (saverOn) tickSaverClock($('saver').querySelector('.clock'));
+    if (Prefs.icalUrl() && Date.now() - calendarAt > 15 * 60000) {
+      calendarAt = Date.now();
+      Glance.loadCalendar(Prefs.icalUrl(), function () { renderGlance(); if (ambientOn) tickAmbient(); });
+    }
+    if (LiveWeather.mode() !== 'off') { pushScene(); LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude()); }
+    refreshSky();
+    reportStatus();
+    // New photos, and signed addresses that expire. A failure is asked again sooner than a list that arrived.
+    if (!resting() && Prefs.icloudAlbum() && (Prefs.icloudSaver() || Prefs.icloudHome())) {
+      var wait = ICloud.problem() ? 2 * 60000 : 30 * 60000;
+      if (Date.now() - ICloud.fetchedAt() > wait) ICloud.sync();
+    }
+    if (saverOn) {
+      var saverClock = $('saver').querySelector('.clock');
+      if (saverClock) tickSaverClock(saverClock);
+    }
     if (ambientOn) tickAmbient();
   }, 30000);
 
   // For the browser preview and tests.
   window.FreeMyTV = {state: st, move: move, activate: activate, back: back, showSaver: showSaver, hideSaver: hideSaver, toast: toast,
-    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim};
+    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim,     showLive: showLiveSaver, syncLive: syncLive,
+    homeContent: applyHomeContent, startAmbient: startScreen, refresh: function () { renderTop(); renderCards(); renderScenes(); renderGlance(); }};
 })();
