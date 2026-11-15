@@ -17,6 +17,8 @@ var LiveWeather = (function () {
     if (force === 'snow') return 'snow';
     if (force === 'fog') return 'fog';
     if (force === 'clear' || force === 'night') return 'clear';
+    // No code yet, or a fetch that failed: a gray sky. A real clear day is code 0, which still draws the sun.
+    if (code === null || code === undefined || isNaN(code)) return 'cloudy';
     code = code || 0;
     if (code >= 95) return 'storm';
     if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
@@ -60,7 +62,8 @@ var LiveWeather = (function () {
     'float hash(vec2 p){',
     '  p = fract(p * vec2(0.1031, 0.1030));',
     '  p += dot(p, p.yx + 19.19);',
-    '  return fract(p.x * p.y * 0.0009765625);',
+    '  p = fract(p * 0.03125);',
+    '  return fract(p.x * p.y * 19.0);',
     '}',
     'float noise(vec2 p){',
     '  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);',
@@ -117,17 +120,11 @@ var LiveWeather = (function () {
     '  vec2 sunP = vec2(0.72 + sin(uDrift * 6.28318) * 0.02, 0.12 + elev * 0.55);',
     '  vec2 asp = vec2(1.78, 1.0);',
     '  float sd = length((uv - sunP) * asp);',
-    '  if (day > 0.2 && uKind < 2.5) {',
+    '  if (day > 0.2 && uKind < 0.5) {',
     '    col += vec3(1.0, 0.95, 0.8) * exp(-sd * 22.0) * 0.9;',
     '    col += vec3(1.0, 0.85, 0.55) * exp(-sd * 6.0) * 0.35 * day;',
     '  }',
     '  if (uNight > 0.55 && uCover < 0.4) {',
-    '    vec2 sp = uv * vec2(120.0, 68.0);',
-    '    vec2 sf = fract(sp) - 0.5;',
-    '    float sh = hash(floor(sp));',
-    '    float tw = 0.55 + 0.45 * sin(uTime * 6.28318 + sh * 6.28318);',
-    '    float star = smoothstep(0.08, 0.0, length(sf)) * step(0.992, sh);',
-    '    col += vec3(0.9, 0.93, 1.0) * star * tw * uNight;',
     '    vec2 mc = (uv - vec2(0.78, 0.78)) * asp;',
     '    float disk = smoothstep(0.055, 0.045, length(mc));',
     '    float ang = uMoon * 6.28318;',
@@ -182,6 +179,9 @@ var LiveWeather = (function () {
     '    s += snowLayer(uv + vec2(0.6), 30.0, 0.22, 0.015) * 0.9;',
     '    col += vec3(0.95, 0.97, 1.0) * s;',
     '  }',
+    '  if (uKind > 0.5 && uKind < 1.5) col = mix(col, vec3(0.50, 0.54, 0.58), 0.78);',
+    '  if (!(col.r >= 0.0 && col.g >= 0.0 && col.b >= 0.0)) col = vec3(0.45, 0.50, 0.56);',
+    '  col = clamp(col, 0.0, 1.0);',
     '  col = pow(max(col, 0.0), vec3(0.92));',
     '  gl_FragColor = vec4(col, 1.0);',
     '}'
@@ -225,25 +225,14 @@ var LiveWeather = (function () {
 
   var DROP_FS = [
     'precision mediump float;',
-    'uniform sampler2D uBg;',
     'uniform sampler2D uDrops;',
-    'uniform float uReady;',
     'varying vec2 vUv;',
     'void main(){',
-    '  vec2 px = vec2(0.003125, 0.005556);',
     '  float h = texture2D(uDrops, vUv).a;',
-    '  float hx = texture2D(uDrops, vUv + vec2(px.x, 0.0)).a;',
-    '  float hy = texture2D(uDrops, vUv + vec2(0.0, px.y)).a;',
-    '  vec2 refr = vec2(hx - h, hy - h) * 0.9;',
     '  float cover = smoothstep(0.08, 0.28, h);',
-    '  vec3 water = vec3(0.72, 0.78, 0.84);',
-    '  vec2 suv = clamp(vUv + refr, 0.03, 0.97);',
-    '  vec3 bent = texture2D(uBg, suv).rgb;',
-    '  float bad = step(0.22, bent.r - bent.g) * step(0.22, bent.b - bent.g);',
-    '  float useBg = step(0.5, uReady) * (1.0 - bad);',
-    '  vec3 col = mix(water, bent, useBg * 0.22);',
+    '  vec3 col = vec3(0.72, 0.78, 0.84);',
     '  float lip = smoothstep(0.2, 0.5, h) * (1.0 - smoothstep(0.62, 0.92, h));',
-    '  col += vec3(1.0, 1.0, 1.0) * lip * 0.1;',
+    '  col += vec3(1.0, 1.0, 1.0) * lip * 0.08;',
     '  gl_FragColor = vec4(col, cover);',
     '}'
   ].join('\n');
@@ -391,20 +380,30 @@ var LiveWeather = (function () {
     return ok ? {tex: tex, fb: fb, w: w, h: h} : null;
   }
 
-  function loseGL() {
+  function replaceCanvas() {
     gl = null;
     prog = null;
     glassProg = null;
     dropProg = null;
     copyProg = null;
     sceneTex = null;
+    blurTex = null;
+    dropTex = null;
+    spriteTex = null;
+    quad = null;
     target = null;
+    ctx = null;
     if (!canvas || !canvas.parentNode || typeof document === 'undefined') return;
-    // A canvas that already has a WebGL context cannot take a 2D one. Swap the element.
     var fresh = canvas.cloneNode(false);
     canvas.parentNode.replaceChild(fresh, canvas);
     canvas = fresh;
-    try { ctx = fresh.getContext('2d'); } catch (e) { ctx = null; }
+  }
+
+  function loseGL() {
+    replaceCanvas();
+    if (!canvas) return;
+    // A canvas that already has a WebGL context cannot take a 2D one, so this is a new element.
+    try { ctx = canvas.getContext('2d'); } catch (e) { ctx = null; }
   }
 
   function releaseGL() {
@@ -1011,6 +1010,7 @@ var LiveWeather = (function () {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, dropTex.tex);
     gl.uniform1i(dropLocs.drops, 1);
+    if (dropLocs.bg) gl.uniform1i(dropLocs.bg, 0);
     if (dropLocs.ready) gl.uniform1f(dropLocs.ready, 1);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1059,7 +1059,9 @@ var LiveWeather = (function () {
     if (scene.night) { g.addColorStop(0, '#070b16'); g.addColorStop(1, '#1a2744'); }
     else if (scene.kind === 'storm') { g.addColorStop(0, '#141820'); g.addColorStop(1, '#2a3038'); }
     else if (scene.kind === 'rain') { g.addColorStop(0, '#3c4a5c'); g.addColorStop(1, '#8b97a3'); }
-    else { g.addColorStop(0, '#3d7ec9'); g.addColorStop(1, '#f0d2b0'); }
+    else if (scene.kind === 'snow') { g.addColorStop(0, '#6e7884'); g.addColorStop(1, '#c5ced6'); }
+    else if (scene.kind === 'cloudy' || scene.kind === 'fog') { g.addColorStop(0, '#5c6570'); g.addColorStop(1, '#8d949c'); }
+    else { g.addColorStop(0, '#3d7ec9'); g.addColorStop(1, '#d7e4f2'); }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
     if (scene.kind === 'rain' || scene.kind === 'storm') {
@@ -1227,22 +1229,28 @@ var LiveWeather = (function () {
       return;
     }
     quality = q || quality || 'medium';
-    // Behind the home screen the canvas stays small. The screensaver still uses the chosen detail.
-    var use = (next === 'overlay' || next === 'row') ? 'low' : (forcedQ || quality);
+    // The home screen uses a plain canvas. Tizen 6 paints an opaque WebGL canvas above the HTML, which hid the UI.
+    var plane = next === 'overlay' || next === 'row';
+    var use = plane ? 'low' : (forcedQ || quality);
     var spec = sizeFor(use);
-    var sizeChanged = canvas.width !== spec.w || canvas.height !== spec.h;
-    if (!gl && !ctx) {
-      if (!initGL(use) && !ctx) {
+    if (plane) {
+      if (gl) loseGL();
+      if (!ctx) {
         try { ctx = canvas.getContext('2d'); } catch (e2) { ctx = null; }
         if (!ctx) note('no draw');
       }
-    } else if (sizeChanged) {
-      if (gl) initGL(use);
-      else {
+      if (canvas.width !== spec.w || canvas.height !== spec.h) {
         canvas.width = spec.w;
         canvas.height = spec.h;
       }
+    } else {
+      if (ctx && !gl) replaceCanvas();
+      var sizeChangedGl = canvas.width !== spec.w || canvas.height !== spec.h;
+      if (!gl) {
+        if (!initGL(use) && !ctx) note('no draw');
+      } else if (sizeChangedGl) initGL(use);
     }
+    var sizeChanged = canvas.width !== spec.w || canvas.height !== spec.h;
     var cls = 'layer on ' + next;
     var changed = mode !== next || sizeChanged;
     mode = next;
@@ -1378,24 +1386,29 @@ var LiveWeather = (function () {
    */
   function chooseSky(o) {
     o = o || {};
-    var model = o.modelCode || 0;
+    var model = typeof o.modelCode === 'number' ? o.modelCode : null;
     var obs = o.obs || null;
-    var snow = hasSnow(model, obs);
+    var snow = hasSnow(model || 0, obs);
     var fromAlert = alertCode(o.alert);
     var dbz = typeof o.radarDbz === 'number' ? o.radarDbz : null;
     if (fromAlert) return {code: fromAlert, source: 'alert', dbz: dbz};
     if (dbz !== null && dbz >= 20) {
-      return {code: rainCode(dbz, snow, isConvective(model) && dbz >= 45), source: 'radar', dbz: dbz};
+      return {code: rainCode(dbz, snow, isConvective(model || 0) && dbz >= 45), source: 'radar', dbz: dbz};
     }
     var mm = typeof o.minuteMm === 'number' ? o.minuteMm : 0;
     if (mm >= 0.1) return {code: minuteCode(mm, snow), source: 'minutely', dbz: dbz};
     var fromObs = obsCode(obs);
-    if (fromObs) return {code: fromObs, source: 'obs', dbz: dbz};
+    // A station that says fair does not wipe out clouds or rain from the forecast. Radar with no echo is not sun.
+    if (fromObs) {
+      if (fromObs <= 1 && model !== null && model >= 2) return {code: model, source: 'model', dbz: dbz};
+      return {code: fromObs, source: 'obs', dbz: dbz};
+    }
     if (model === 45 || model === 48) {
       var vis = obsFresh(obs) && typeof obs.visibilityM === 'number' ? obs.visibilityM : null;
       if (vis !== null && vis < 1000) return {code: model, source: 'model', dbz: dbz};
       return {code: 3, source: 'model', dbz: dbz};
     }
+    if (model === null) return {code: 3, source: 'none', dbz: dbz};
     return {code: model, source: 'model', dbz: dbz};
   }
 
@@ -1541,7 +1554,7 @@ var LiveWeather = (function () {
       skyBusy = false;
       var known = radarFresh(radar);
       var choice = chooseSky({
-        modelCode: opts.modelCode || 0,
+        modelCode: opts.modelCode,
         minuteMm: opts.minuteMm,
         radarDbz: known ? known.dbz : null,
         obs: obs,

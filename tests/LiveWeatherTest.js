@@ -30,7 +30,8 @@ expect(W.kind(99, 'auto'), 'storm', 'thunderstorm with hail');
 expect(W.kind(0, 'rain'), 'rain', 'preview rain');
 expect(W.kind(95, 'clear'), 'clear', 'preview wins over the code');
 expect(W.kind(2, 'night'), 'clear', 'clear night preview');
-expect(W.kind(null, 'auto'), 'clear', 'no code yet');
+expect(W.kind(null, 'auto'), 'cloudy', 'no code yet stays gray');
+expect(W.kind(undefined, 'auto'), 'cloudy', 'a failed fetch is not sun');
 
 expect(W.night(true, 'auto'), false, 'day');
 expect(W.night(false, 'auto'), true, 'night');
@@ -67,6 +68,11 @@ expect(sky({radarDbz: 54, obs: {ageMin: 10, text: 'Fog', weather: 'fog', visibil
 expect(sky({alert: 'Severe Thunderstorm Warning', radarDbz: 10}).code, 95, 'a severe storm warning wins');
 expect(sky({alert: 'Severe Thunderstorm Warning'}).source, 'alert', 'the warning is the source');
 expect(sky({radarDbz: 0, minuteMm: 0, obs: null}).code, 3, 'model fog without low visibility is cloudy');
+expect(sky({modelCode: 51, radarDbz: 0, minuteMm: 0, obs: {ageMin: 10, text: 'Fair', weather: '', visibilityM: 16000}}).code, 51, 'a fair station does not erase drizzle');
+expect(sky({modelCode: 3, radarDbz: 0, minuteMm: 0, obs: {ageMin: 10, text: 'Sunny', weather: '', visibilityM: 16000}}).code, 3, 'sun from a station does not erase overcast');
+expect(sky({modelCode: 0, radarDbz: 0, minuteMm: 0, obs: null}).code, 0, 'a real clear forecast stays clear');
+expect(sky({radarDbz: null, minuteMm: 0, obs: null, modelCode: null}).code, 3, 'no forecast is cloudy, not sun');
+expect(sky({radarDbz: null, minuteMm: 0, obs: null, modelCode: null}).source, 'none', 'a missing forecast is marked none');
 expect(W.moonPhase(Date.UTC(2000, 0, 6, 18, 14)) < 0.01, true, 'the known new moon');
 var full = W.moonPhase(Date.UTC(2000, 0, 6, 18, 14) + 29.53058867 * 86400000 * 0.5);
 expect(full > 0.49 && full < 0.51, true, 'half a month later is full');

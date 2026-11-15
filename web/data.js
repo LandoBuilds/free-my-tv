@@ -249,7 +249,7 @@ var Data = (function () {
   // Both forecasts in one answer, the next 48 hours and today plus 5 days: Home Settings → Forecast switches without
   // asking again, and offline too. 14 steps of 15 minutes tell the card whether rain comes in the next two hours, even
   // from a forecast 30 minutes old (where the time zone is off by half an hour, they start up to 45 minutes back).
-  var QUERY = '&current=temperature_2m,apparent_temperature,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m'
+  var QUERY = '&current=temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,is_day,wind_speed_10m,wind_direction_10m'
       + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code,uv_index_max'
       + '&minutely_15=precipitation,precipitation_probability&forecast_minutely_15=14'
       + '&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48';
@@ -275,6 +275,7 @@ var Data = (function () {
       modelCode: o.current.weather_code,
       isDay: o.current.is_day !== 0, precip: o.current.precipitation,
       wind: o.current.wind_speed_10m, windDir: o.current.wind_direction_10m,
+      cloud: typeof o.current.cloud_cover === 'number' ? o.current.cloud_cover : null,
       max: dl.temperature_2m_max[0], min: dl.temperature_2m_min[0],
       uv: dl.uv_index_max ? dl.uv_index_max[0] : null,
       sunrise: localTime(dl.sunrise[0], off), sunset: localTime(dl.sunset[0], off), hours: [], days: []
@@ -304,7 +305,26 @@ var Data = (function () {
       w.days.push({at: new Date(+p[0], p[1] - 1, +p[2], 12).getTime(), max: dl.temperature_2m_max[j],
         min: dl.temperature_2m_min[j], code: dl.weather_code[j]});
     }
+    var raised = floorCode(w.modelCode, w.cloud, w.precip);
+    if (raised !== null) w.code = raised;
     return w;
+  }
+
+  /** Cloud cover and rain raise a clear code. A missing code stays missing, so the sky does not invent sun. */
+  function floorCode(code, cloud, precip) {
+    var wet = typeof precip === 'number' && precip >= 0.1;
+    var known = typeof code === 'number' && !isNaN(code);
+    if (!known) {
+      if (wet) return 51;
+      if (typeof cloud === 'number' && cloud >= 80) return 3;
+      if (typeof cloud === 'number' && cloud >= 35) return 2;
+      return null;
+    }
+    if (code >= 71) return code;
+    if (wet && code < 51) return 51;
+    if (typeof cloud === 'number' && cloud >= 80 && code < 3) return 3;
+    if (typeof cloud === 'number' && cloud >= 35 && code < 2) return 2;
+    return code;
   }
 
   /**
@@ -347,9 +367,13 @@ var Data = (function () {
   /** The sky the radar (or the station) picked. The model code stays on modelCode. */
   function applySky(choice) {
     if (!weather || !choice || typeof choice.code !== 'number') return;
+    if (choice.source === 'none') return;
     if (typeof weather.modelCode !== 'number') weather.modelCode = weather.code;
-    var same = weather.code === choice.code && weather.source === choice.source;
-    weather.code = choice.code;
+    var kept = floorCode(weather.modelCode, weather.cloud, weather.precip);
+    var next = choice.code;
+    if (next <= 1 && kept !== null && kept >= 2) next = kept;
+    var same = weather.code === next && weather.source === choice.source;
+    weather.code = next;
     weather.source = choice.source;
     if (typeof choice.dbz === 'number') weather.radarDbz = choice.dbz;
     var floor = 0;

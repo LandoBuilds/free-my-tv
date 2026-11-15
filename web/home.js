@@ -2405,7 +2405,6 @@
     s.innerHTML = '';
     resetSaverChrome();
     var a = el('div', 'photo', s), b = el('div', 'photo', s);
-    el('div', 'shade', s);
     var clock = el('div', 'clock', s);
     el('div', 'time', clock);
     el('div', 'date', clock);
@@ -2473,7 +2472,6 @@
     setClass(s, 'fit', Prefs.icloudFit());
     setClass(s, 'noclock', !Prefs.icloudClock());
     var a = albumFrame(s), b = albumFrame(s);
-    el('div', 'shade', s);
     var clock = el('div', 'clock', s);
     el('div', 'time', clock);
     el('div', 'date', clock);
@@ -2584,7 +2582,7 @@
   /** The forecast, as drops and a sky. Full screen when the screensaver is Live weather; otherwise only the drops. */
   function pushScene() {
     var w = Data.weather, force = Prefs.liveForce();
-    var code = w ? w.code : 0, day = w ? w.isDay : true;
+    var code = w && typeof w.code === 'number' ? w.code : null, day = w ? w.isDay : true;
     var mm = w ? Data.nextHourMm() : null;
     if ((mm === null || mm === 0) && w && w.precip) mm = w.precip;
     LiveWeather.scene({
@@ -2608,8 +2606,7 @@
     }
     var feature = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
     if (full) LiveWeather.setMode('full', Prefs.liveQuality());
-    else if (saverOn && (Prefs.livePhotos() || ambientGlass)) LiveWeather.setMode('glass', Prefs.liveQuality());
-    else if (feature || (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome())) LiveWeather.setMode('overlay', Prefs.liveQuality());
+    else if (!saverOn && !ambientOn && (feature || (!sheetOpen() && Prefs.liveHome()))) LiveWeather.setMode('overlay', Prefs.liveQuality());
     else LiveWeather.setMode('off');
     pushScene();
     setClass(body, 'weather-home', LiveWeather.mode() === 'overlay' || feature);
@@ -2636,7 +2633,7 @@
     if (alert) el('div', 'alert', box, alert);
     if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
     if (!saverOn && Prefs.homeShow() === 'weather') {
-      var daily = Data.forecast() === 'days' && w.days && w.days.length;
+      var daily = Prefs.forecast() === 'days' && w.days && w.days.length;
       var src = daily ? w.days : w.hours;
       if (src && src.length) {
         var strip = el('div', 'hours', box), n = Math.min(5, src.length), i, cell;
@@ -3225,7 +3222,7 @@
     LiveWeather.refreshConditions({
       lat: lat,
       lon: lon,
-      modelCode: w ? (typeof w.modelCode === 'number' ? w.modelCode : w.code) : 0,
+      modelCode: w && typeof w.modelCode === 'number' ? w.modelCode : (w && typeof w.code === 'number' ? w.code : null),
       minuteMm: Data.minuteNow()
     }, function (choice) { Data.applySky(choice); });
   }
