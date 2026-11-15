@@ -85,9 +85,10 @@ body.weather-home #sky { visibility: hidden; }
 /* Light type: the rain sky behind the header is dark, and the controls sit above that canvas. */
 body.weather-home #title,
 body.weather-home #glance,
-body.weather-home .tab.on,
-body.weather-home .tab.focus { color: #F5F5F7; }
+body.weather-home .tab.on { color: #F5F5F7; }
 body.weather-home .tab { color: rgba(245, 245, 247, 0.72); }
+/* The focus pill is white, so the label stays dark on every sky. */
+body.weather-home .tab.focus { color: #1D1D1F; }
 body.weather-home #homephotos .when,
 body.weather-home #homephotos .cap { color: #F5F5F7; }
 body.weather-home #homephotos .ago { color: rgba(245, 245, 247, 0.72); }
