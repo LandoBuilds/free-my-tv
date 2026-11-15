@@ -105,7 +105,7 @@ body.weather-home #sky { visibility: hidden; }
   line-height: 442px;
   text-align: center;
 }
-/* A pane the shape of the photo, and the date beside it. Width is set from the picture. */
+/* A pane the shape of the photo. The date sits under the picture, in a fixed strip, so a new photo does not move the shelf. */
 #homephotos .pane {
   position: absolute;
   left: 0;
@@ -124,20 +124,22 @@ body.weather-home #sky { visibility: hidden; }
 #homephotos .shot.on { opacity: 1; }
 #homephotos .info {
   position: absolute;
-  top: 48px;
-  bottom: 48px;
-  left: 1020px;
-  right: 8px;
-  line-height: 1.25;
+  left: 0;
+  top: 360px;
+  width: 360px;
+  height: 78px;
+  overflow: hidden;
+  line-height: 1.2;
   text-align: left;
 }
-#homephotos .when { font-size: 42px; font-weight: 560; color: #1D1D1F; }
-#homephotos .ago { margin-top: 10px; font-size: 26px; font-weight: 500; color: #6E6E73; }
-#homephotos .cap { margin-top: 22px; font-size: 30px; font-weight: 500; color: #1D1D1F; white-space: normal; }
+#homephotos .when { font-size: 22px; font-weight: 560; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#homephotos .ago { margin-top: 2px; font-size: 18px; font-weight: 500; color: #6E6E73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#homephotos .cap { margin-top: 2px; font-size: 20px; font-weight: 500; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .night #homephotos .when, .night #homephotos .cap { color: #F5F5F7; }
 .night #homephotos .ago { color: rgba(245, 245, 247, 0.62); }
 .rtl #homephotos .pane { left: auto; right: 0; }
-.rtl #homephotos .info { left: 8px; right: 1020px; text-align: right; }
+.rtl #homephotos .shot { left: auto; right: 0; }
+.rtl #homephotos .info { text-align: right; }
 body.content-photos #homephotos { visibility: visible; }
 body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
 .drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.tucked { opacity: 0; }

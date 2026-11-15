@@ -2545,7 +2545,7 @@
   /** Width of the photo pane: the banner height times the picture's shape, capped so the date still fits. */
   function paneWidth(w, h) {
     var ratio = w > 0 && h > 0 ? w / h : 1.5;
-    var width = Math.round(442 * ratio);
+    var width = Math.round(352 * ratio);
     if (width > 980) width = 980;
     if (width > 1760 - 480) width = 1760 - 480;
     if (width < 220) width = 220;
@@ -2601,10 +2601,12 @@
     var img = new Image();
     var url = photo.url;
     img.onload = function () {
-      if (bannerReady && bannerReady.url === url) return;
-      var c = document.createElement('canvas');
-      drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 442);
-      bannerReady = {url: url, canvas: c};
+      setTimeout(function () {
+        if (bannerReady && bannerReady.url === url) return;
+        var c = document.createElement('canvas');
+        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 352);
+        bannerReady = {url: url, canvas: c};
+      }, 0);
     };
     img.src = url;
     try { if (img.decode) img.decode(); } catch (e) {}
@@ -2630,13 +2632,19 @@
     var caption = photo && photo.caption ? String(photo.caption) : '';
     cap.style.display = caption ? 'block' : 'none';
     cap.textContent = caption;
+    var info = box.querySelector('.info');
+    if (info) {
+      var width = paneWidth(photo && photo.w, photo && photo.h);
+      info.style.width = width + 'px';
+      info.style.left = rtl ? 'auto' : '0px';
+      info.style.right = rtl ? '0px' : 'auto';
+    }
   }
 
   /** The whole photo, already scaled, fading in. The pane does not change width, so the row is not laid out again. */
   function paintBanner(box, photo) {
     bannerNodes(box);
     showBannerText(box, photo);
-    if (typeof LiveWeather !== 'undefined' && LiveWeather.hold) LiveWeather.hold(450);
     var shots = box.querySelectorAll('.shot');
     var back = shots[0].className.indexOf('on') >= 0 ? shots[1] : shots[0];
     var front = back === shots[0] ? shots[1] : shots[0];
@@ -2650,16 +2658,20 @@
       back.width = src.width;
       back.height = src.height;
       ctx.drawImage(src, 0, 0);
+      var info = box.querySelector('.info');
+      if (info) info.style.width = src.width + 'px';
       setClass(back, 'on', true);
       setClass(front, 'on', false);
     }
     if (bannerReady && bannerReady.url === shown) { reveal(bannerReady.canvas); return; }
     var img = new Image();
     img.onload = function () {
-      var c = document.createElement('canvas');
-      drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 442);
-      bannerReady = {url: shown, canvas: c};
-      reveal(c);
+      setTimeout(function () {
+        var c = document.createElement('canvas');
+        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 352);
+        bannerReady = {url: shown, canvas: c};
+        reveal(c);
+      }, 0);
     };
     img.onerror = function () { ICloud.noteBroken(); };
     img.src = shown;
@@ -2789,7 +2801,10 @@
 
   function paintHud() {
     if (!hud) return;
-    var line = 'ui ' + hudFps + '   rain ' + hudRain + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
+    var rain = (typeof LiveWeather !== 'undefined' && LiveWeather.stats) ? LiveWeather.stats() : null;
+    var line = 'ui ' + hudFps + '   rain ' + hudRain
+      + (rain ? '   reinit ' + rain.inits + '   gap ' + rain.gap + ' ms' : '')
+      + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
     if (hud.textContent !== line) hud.textContent = line;
   }
 
@@ -2831,8 +2846,6 @@
     var k = e.keyCode;
     var t0 = nowMs();
     if (k === 405) { toggleHud(); e.preventDefault(); return; }
-    if (typeof LiveWeather !== 'undefined' && LiveWeather.skipFrame) LiveWeather.skipFrame();
-    if (typeof LiveWeather !== 'undefined' && LiveWeather.hold) LiveWeather.hold(2000);
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
     if (!saverOn && !ambientOn && !sheetOpen() && k === 403) { startScreen(); e.preventDefault(); return; }
     if (typing(k)) return;

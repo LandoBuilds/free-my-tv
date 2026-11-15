@@ -38,6 +38,8 @@ expect(W.night(true, 'night'), true, 'forced night');
 expect(W.night(false, 'clear'), false, 'forced day');
 
 expect(W.rate(0, true) > 0, true, 'a rainy code with no amount still falls');
+expect(W.beadCount(0), 0, 'dry glass has no drops');
+expect(W.beadCount(0.35) > 0 && W.beadCount(0.35) < W.beadCount(1), true, 'heavier rain means more beads');
 expect(W.rate(0, false), 0, 'nothing to draw');
 expect(W.rate(0.2, true) < W.rate(2, true), true, 'heavier rain is stronger');
 expect(W.rate(8, true), 1, 'a downpour is full');

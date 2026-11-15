@@ -82,7 +82,7 @@ var LiveWeather = (function () {
     '  float fx = fract(col) - 0.5 + (h - 0.5) * 0.9;',
     '  float head = fract(h * 5.3 - uTime * speed);',
     '  float dy = fract(q.y - head);',
-    '  float along = smoothstep(0.0, len * 0.07, dy) * smoothstep(len, len * 0.25, dy);',
+    '  float along = smoothstep(0.0, len * 0.06, dy) * (1.0 - smoothstep(len * 0.55, len, dy));',
     '  float w = smoothstep(width, 0.0, abs(fx));',
     '  float core = smoothstep(width * 0.22, 0.0, abs(fx));',
     '  float show = smoothstep(0.12, 0.48, h * (0.2 + uRate));',
@@ -171,14 +171,10 @@ var LiveWeather = (function () {
     '    col = mix(col, vec3(0.78, 0.80, 0.83), clamp(fog, 0.0, 0.92));',
     '  }',
     '  if ((uKind > 2.5 && uKind < 3.5) || uKind > 4.5) {',
-    '    float pace = 0.5 + uRate * 0.15 + uMove * 0.85;',
-    '    float far = rainLayer(uv, 150.0, 0.36 * pace, 0.038, 0.1, 1.3) * 0.16;',
-    '    far += rainLayer(uv + vec2(0.17, 0.0), 96.0, 0.5 * pace, 0.05, 0.09, 2.9) * 0.22;',
-    '    float mid = rainLayer(uv + vec2(0.41, 0.0), 44.0, 0.72 * pace, 0.09, 0.08, 4.4) * 0.36;',
-    '    float near = rainLayer(uv + vec2(0.73, 0.0), 18.0, 1.0 * pace, 0.17, 0.055, 7.1) * 0.55;',
-    '    col += vec3(0.5, 0.58, 0.68) * far;',
-    '    col += vec3(0.66, 0.74, 0.84) * mid;',
-    '    col += vec3(0.82, 0.9, 0.98) * near;',
+    '    float pace = 0.9 + uRate * 0.35;',
+    '    float far = rainLayer(uv, 64.0, 0.8 * pace, 0.7, 0.04, 1.3) * 0.08;',
+    '    float mid = rainLayer(uv + vec2(0.41, 0.2), 28.0, 1.05 * pace, 0.78, 0.03, 4.4) * 0.11;',
+    '    col += vec3(0.72, 0.8, 0.88) * (far + mid);',
     '  }',
     '  if (uKind > 3.5 && uKind < 4.5) {',
     '    float s = 0.0;',
@@ -215,12 +211,58 @@ var LiveWeather = (function () {
 
   var VS = 'attribute vec2 a; varying vec2 vUv; void main(){ vUv = a * 0.5 + 0.5; gl_Position = vec4(a, 0.0, 1.0); }';
 
+  var DROP_VS = [
+    'attribute vec2 a;',
+    'uniform vec4 uRect;',
+    'varying vec2 vUv;',
+    'void main(){',
+    '  vec2 p = a * 0.5 + 0.5;',
+    '  vUv = vec2(uRect.x + p.x * uRect.z, uRect.y + p.y * uRect.w);',
+    '  gl_Position = vec4(vUv * 2.0 - 1.0, 0.0, 1.0);',
+    '}'
+  ].join('\n');
+
+  var DROP_FS = [
+    'precision mediump float;',
+    'uniform sampler2D uBg;',
+    'uniform vec4 uRect;',
+    'uniform float uRad;',
+    'uniform float uTrail;',
+    'varying vec2 vUv;',
+    'void main(){',
+    '  vec2 c = vec2(uRect.x + uRect.z * 0.5, uRect.y + uRad);',
+    '  vec2 d = vec2((vUv.x - c.x) * 1.78, vUv.y - c.y);',
+    '  float body = 1.0 - dot(d / max(uRad, 0.001), d / max(uRad, 0.001));',
+    '  float bead = smoothstep(0.0, 0.18, body);',
+    '  float above = vUv.y - c.y;',
+    '  float trail = step(0.0, above) * (1.0 - smoothstep(uTrail * 0.2, max(uTrail, 0.001), above));',
+    '  trail *= 1.0 - smoothstep(uRad * 0.12, uRad * 0.5, abs(d.x));',
+    '  vec2 refr = d * bead * 0.9;',
+    '  vec3 col = texture2D(uBg, clamp(vUv + refr, 0.0, 1.0)).rgb;',
+    '  col += vec3(0.16, 0.18, 0.2) * smoothstep(0.4, 0.95, body) * bead;',
+    '  vec3 run = texture2D(uBg, clamp(vUv + vec2(0.0, 0.005), 0.0, 1.0)).rgb + vec3(0.04);',
+    '  col = mix(col, run, trail * (1.0 - bead) * 0.7);',
+    '  if (max(bead, trail) < 0.05) discard;',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '}'
+  ].join('\n');
+
+  var COPY_FS = [
+    'precision mediump float;',
+    'uniform sampler2D uBg;',
+    'varying vec2 vUv;',
+    'void main(){ gl_FragColor = texture2D(uBg, vUv); }'
+  ].join('\n');
+
   var canvas = null, boltCanvas = null, boltCtx = null, gl = null, ctx = null, prog = null, glassProg = null, quad = null;
+  var dropProg = null, copyProg = null, sceneTex = null, dropLocs = null, copyLocs = null;
   var target = null, mode = 'off', running = false, quality = 'medium', forcedQ = '';
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
   var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
-  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, skipDraw = false, holdUntil = 0, drawn = 0, anim = 0, shownFade = 1;
+  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, drawn = 0, anim = 0, lastDt = 0.034;
+  var inits = 0, gapMax = 0, gapSince = 0;
+  var passSec = 0, passWind = 0, passFlash = 0, passMove = 0, elevCache = 0, elevAt = 0;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -255,8 +297,12 @@ var LiveWeather = (function () {
   }
 
   function elevNow() {
-    if (scene.night) return -0.16;
-    var h = new Date().getHours() + new Date().getMinutes() / 60;
+    var now = Date.now();
+    if (elevAt && now - elevAt < 60000) return elevCache;
+    elevAt = now;
+    if (scene.night) { elevCache = -0.16; return elevCache; }
+    var d = new Date(now);
+    var h = d.getHours() + d.getMinutes() / 60;
     // "Clear" in the preview is a daytime sky, even when the clock is still before dawn.
     if (typeof Prefs !== 'undefined' && Prefs.liveForce) {
       var force = Prefs.liveForce();
@@ -264,8 +310,8 @@ var LiveWeather = (function () {
       else if (force === 'fog') h = 9.5;
     }
     var x = (h - 6.2) / 13.2;
-    if (x <= 0 || x >= 1) return -0.05;
-    return Math.sin(x * Math.PI);
+    elevCache = (x <= 0 || x >= 1) ? -0.05 : Math.sin(x * Math.PI);
+    return elevCache;
   }
 
   function note(msg) {
@@ -295,9 +341,9 @@ var LiveWeather = (function () {
     return prec + body;
   }
 
-  function program(fs) {
+  function program(fs, vsSrc) {
     var p = gl.createProgram();
-    var vs = compile(gl.VERTEX_SHADER, VS);
+    var vs = compile(gl.VERTEX_SHADER, vsSrc || VS);
     var fsh = compile(gl.FRAGMENT_SHADER, fs);
     if (!vs || !fsh) return null;
     gl.attachShader(p, vs);
@@ -332,6 +378,9 @@ var LiveWeather = (function () {
     gl = null;
     prog = null;
     glassProg = null;
+    dropProg = null;
+    copyProg = null;
+    sceneTex = null;
     target = null;
     if (!canvas || !canvas.parentNode || typeof document === 'undefined') return;
     // A canvas that already has a WebGL context cannot take a 2D one. Swap the element.
@@ -344,12 +393,16 @@ var LiveWeather = (function () {
   function initGL(q) {
     if (!canvas) return false;
     var spec = sizeFor(q);
+    if (gl && prog && canvas.width === spec.w && canvas.height === spec.h && sceneTex && sceneTex.w === spec.w && sceneTex.h === spec.h) return true;
     if (canvas.width !== spec.w || canvas.height !== spec.h) {
       canvas.width = spec.w;
       canvas.height = spec.h;
       gl = null;
       prog = null;
       glassProg = null;
+      dropProg = null;
+      copyProg = null;
+      sceneTex = null;
       target = null;
     }
     if (!gl) {
@@ -360,8 +413,10 @@ var LiveWeather = (function () {
       } catch (e) { gl = null; }
       if (!gl) { note('no WebGL'); return false; }
       prog = program(fragmentSource());
-      glassProg = program(GLASS);
+      copyProg = program(COPY_FS);
+      dropProg = program(DROP_FS, DROP_VS);
       if (!prog) { note('shader failed, using canvas'); loseGL(); return false; }
+      inits++;
       quad = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, quad);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -379,17 +434,24 @@ var LiveWeather = (function () {
         moon: gl.getUniformLocation(prog, 'uMoon'),
         bolt: gl.getUniformLocation(prog, 'uBolt')
       };
-      if (glassProg) {
-        glassLocs = {
-          a: gl.getAttribLocation(glassProg, 'a'),
-          scene: gl.getUniformLocation(glassProg, 'uScene'),
-          time: gl.getUniformLocation(glassProg, 'uTime'),
-          rate: gl.getUniformLocation(glassProg, 'uRate')
+      if (copyProg) {
+        copyLocs = {a: gl.getAttribLocation(copyProg, 'a'), bg: gl.getUniformLocation(copyProg, 'uBg')};
+      }
+      if (dropProg) {
+        dropLocs = {
+          a: gl.getAttribLocation(dropProg, 'a'),
+          bg: gl.getUniformLocation(dropProg, 'uBg'),
+          rect: gl.getUniformLocation(dropProg, 'uRect'),
+          rad: gl.getUniformLocation(dropProg, 'uRad'),
+          trail: gl.getUniformLocation(dropProg, 'uTrail')
         };
       }
+      note('gl ready ' + spec.w + 'x' + spec.h);
     }
-    if (target && target.tex) { gl.deleteTexture(target.tex); gl.deleteFramebuffer(target.fb); target = null; }
-    if (spec.glass && glassProg) target = makeTarget(spec.w, spec.h);
+    if (!sceneTex || sceneTex.w !== spec.w || sceneTex.h !== spec.h) {
+      if (sceneTex && sceneTex.tex) { gl.deleteTexture(sceneTex.tex); gl.deleteFramebuffer(sceneTex.fb); }
+      sceneTex = makeTarget(spec.w, spec.h);
+    }
     return true;
   }
 
@@ -540,54 +602,170 @@ var LiveWeather = (function () {
     thunderAt = wall + (sheet ? 900 + Math.random() * 2400 : 400 + Math.random() * 1600);
   }
 
+  var BEAD_N = 24;
+  var beads = new Array(BEAD_N);
+  var beadI;
+  for (beadI = 0; beadI < BEAD_N; beadI++) {
+    beads[beadI] = {x: 0, y: 0, r: 0.012, vy: 0, run: 0, wait: 0, on: 0, trail: 0, seed: beadI + 1};
+  }
+
+  /** How many glass beads to keep. None when it is dry; a few in drizzle; a full set in a downpour.
+   *  The old home-screen streaks were one short slice of a slow cycle (about five seconds on the far
+   *  layer), so a streak vanished mid-screen and the next one popped in at the top. These beads are
+   *  separate, and the faint streaks behind them stay long enough to keep moving through that wrap. */
+  function beadCount(rate) {
+    if (!rate || rate < 0.2) return 0;
+    if (rate < 0.45) return 6;
+    if (rate < 0.75) return 14;
+    return BEAD_N;
+  }
+
+  function respawnBead(b, fromTop) {
+    var x = (b.seed * 0.37 + Math.random()) % 1;
+    b.x = x < 0 ? x + 1 : x;
+    b.y = fromTop ? (-0.04 - Math.random() * 0.2) : Math.random() * 0.85;
+    b.r = 0.009 + (b.seed % 5) * 0.0025 + Math.random() * 0.005;
+    b.run = 0;
+    b.vy = 0.015;
+    b.wait = 0.6 + Math.random() * 3.4;
+    b.trail = 0;
+    b.on = 1;
+  }
+
+  function stepBeads(dt, rate) {
+    var n = beadCount(rate), i, j, a, b, dx, dy, reach;
+    for (i = 0; i < BEAD_N; i++) {
+      a = beads[i];
+      if (i >= n) { a.on = 0; continue; }
+      if (!a.on) respawnBead(a, false);
+      a.wait -= dt;
+      if (!a.run && a.wait <= 0) {
+        a.run = 1;
+        a.vy = 0.2 + Math.random() * 0.25;
+      }
+      if (a.run) {
+        a.vy += dt * 0.16;
+        if (a.vy > 0.7) a.vy = 0.7;
+        a.trail = a.vy * 0.2;
+        if (a.trail > 0.14) a.trail = 0.14;
+      } else {
+        a.vy = 0.018;
+        a.trail = 0;
+      }
+      a.y += a.vy * dt;
+      a.x += (scene.wind || 0) * 0.00035 * dt;
+      if (a.x < -0.05) a.x += 1;
+      if (a.x > 1.05) a.x -= 1;
+      if (a.y > 1.06) respawnBead(a, true);
+    }
+    for (i = 0; i < n; i++) {
+      a = beads[i];
+      if (!a.on || !a.run) continue;
+      for (j = i + 1; j < n; j++) {
+        b = beads[j];
+        if (!b.on) continue;
+        dx = a.x - b.x;
+        dy = a.y - b.y;
+        reach = a.r + b.r;
+        if (dx * dx + dy * dy > reach * reach) continue;
+        if (a.y >= b.y) {
+          a.r = a.r + b.r * 0.45;
+          if (a.r > 0.038) a.r = 0.038;
+          if (b.vy > a.vy) a.vy = b.vy;
+          a.run = 1;
+          respawnBead(b, true);
+        } else {
+          b.r = b.r + a.r * 0.45;
+          if (b.r > 0.038) b.r = 0.038;
+          if (a.vy > b.vy) b.vy = a.vy;
+          b.run = 1;
+          respawnBead(a, true);
+        }
+      }
+    }
+  }
+
+  function applySky(p, L) {
+    gl.useProgram(p);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.enableVertexAttribArray(L.a);
+    gl.vertexAttribPointer(L.a, 2, gl.FLOAT, false, 0, 0);
+    if (L.time) gl.uniform1f(L.time, passSec);
+    if (L.elev) gl.uniform1f(L.elev, elevNow());
+    if (L.cover) gl.uniform1f(L.cover, coverOf(scene.kind));
+    if (L.rate) gl.uniform1f(L.rate, scene.kind === 'rain' || scene.kind === 'storm' || scene.kind === 'snow' ? Math.max(scene.rate || 0, 0.35) : 0);
+    if (L.wind) gl.uniform1f(L.wind, passWind);
+    if (L.move) gl.uniform1f(L.move, passMove);
+    if (L.flash) gl.uniform1f(L.flash, passFlash);
+    if (L.kind) gl.uniform1f(L.kind, KINDN[scene.kind] || 0);
+    if (L.night) gl.uniform1f(L.night, scene.night ? 1 : 0);
+    if (L.moon) gl.uniform1f(L.moon, moonPhase(Date.now()));
+    if (L.bolt) gl.uniform2f(L.bolt, boltUv[0], boltUv[1]);
+  }
+
+  function drawBeads() {
+    var n = beadCount(scene.rate || 0), i, b, sy, rad, trail, qw, qh, qx, qy;
+    if (!n || !dropProg || !sceneTex) return;
+    gl.useProgram(dropProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.enableVertexAttribArray(dropLocs.a);
+    gl.vertexAttribPointer(dropLocs.a, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, sceneTex.tex);
+    gl.uniform1i(dropLocs.bg, 0);
+    for (i = 0; i < n; i++) {
+      b = beads[i];
+      if (!b.on) continue;
+      sy = 1 - b.y;
+      rad = b.r;
+      trail = b.trail;
+      qw = (rad * 2.6) / 1.78;
+      qh = rad * 1.35 + (trail > 0.004 ? trail : 0);
+      qx = b.x - qw * 0.5;
+      qy = sy - rad;
+      gl.uniform4f(dropLocs.rect, qx, qy, qw, qh);
+      gl.uniform1f(dropLocs.rad, rad);
+      gl.uniform1f(dropLocs.trail, trail);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+  }
+
   function drawGL(sec) {
-    var spec = sizeFor(forcedQ || quality);
     var v = drive();
     var w = canvas.width, h = canvas.height;
     var gust = Math.sin(sec * (0.07 + v * 0.25)) * (0.015 + v * v * 0.4);
     var sign = Math.sin(((scene.dir || 0) * Math.PI) / 180);
     if (!sign) sign = 1;
     sign = sign < 0 ? -1 : 1;
-    var wind = Math.max(-1.4, Math.min(1.4, sign * (0.28 + v * 1.15) + gust));
-    var flashN = flash > 0 ? Math.min(1, flash) : 0;
+    var wind = sign * (0.28 + v * 1.15) + gust;
+    if (wind > 1.4) wind = 1.4;
+    if (wind < -1.4) wind = -1.4;
+    var flashN = 0;
     if (flash > 0.25) flash -= 0.03;
     else if (flash > 0) flash -= 0.012;
-    function uniforms(p, L) {
-      gl.useProgram(p);
-      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-      gl.enableVertexAttribArray(L.a);
-      gl.vertexAttribPointer(L.a, 2, gl.FLOAT, false, 0, 0);
-      if (L.time) gl.uniform1f(L.time, sec);
-      if (L.elev) gl.uniform1f(L.elev, elevNow());
-      if (L.cover) gl.uniform1f(L.cover, coverOf(scene.kind));
-      if (L.rate) gl.uniform1f(L.rate, scene.kind === 'rain' || scene.kind === 'storm' || scene.kind === 'snow' ? Math.max(scene.rate || 0, 0.35) : 0);
-      if (L.wind) gl.uniform1f(L.wind, wind);
-      if (L.move) gl.uniform1f(L.move, v);
-      if (L.flash) gl.uniform1f(L.flash, scene.kind === 'storm' ? flashN : 0);
-      if (L.kind) gl.uniform1f(L.kind, KINDN[scene.kind] || 0);
-      if (L.night) gl.uniform1f(L.night, scene.night ? 1 : 0);
-      if (L.moon) gl.uniform1f(L.moon, moonPhase(Date.now()));
-      if (L.bolt) gl.uniform2f(L.bolt, boltUv[0], boltUv[1]);
-    }
+    if (flash > 0) flashN = flash > 1 ? 1 : flash;
+    passSec = sec;
+    passWind = wind;
+    passMove = v;
+    passFlash = scene.kind === 'storm' ? flashN : 0;
     gl.viewport(0, 0, w, h);
-    if (target && spec.glass && (scene.kind === 'rain' || scene.kind === 'storm')) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb);
-      uniforms(prog, locs);
+    if ((scene.kind === 'rain' || scene.kind === 'storm') && sceneTex && copyProg && dropProg) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sceneTex.fb);
+      applySky(prog, locs);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.useProgram(glassProg);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, target.tex);
-      gl.uniform1i(glassLocs.scene, 0);
-      gl.uniform1f(glassLocs.time, sec);
-      gl.uniform1f(glassLocs.rate, scene.rate || 0);
+      gl.useProgram(copyProg);
       gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-      gl.enableVertexAttribArray(glassLocs.a);
-      gl.vertexAttribPointer(glassLocs.a, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(copyLocs.a);
+      gl.vertexAttribPointer(copyLocs.a, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, sceneTex.tex);
+      gl.uniform1i(copyLocs.bg, 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      drawBeads();
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      uniforms(prog, locs);
+      applySky(prog, locs);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
@@ -605,7 +783,7 @@ var LiveWeather = (function () {
       var n, layer, count, len, alpha, x, yy, lean;
       for (layer = 0; layer < 3; layer++) {
         count = layer === 0 ? 80 : (layer === 1 ? 40 : 16);
-        len = 16 + layer * 28;
+        len = 70 + layer * 40;
         alpha = 0.1 + layer * 0.14;
         ctx.lineWidth = layer === 2 ? 1.3 : 0.6;
         ctx.strokeStyle = 'rgba(206,218,230,' + alpha + ')';
@@ -619,18 +797,34 @@ var LiveWeather = (function () {
           ctx.stroke();
         }
       }
+      paintBeads2d(w, h);
     }
   }
 
-  function fadeTo(level) {
-    if (!canvas || shownFade === level) return;
-    shownFade = level;
-    var value = level < 1 ? '0.72' : '1';
-    canvas.style.opacity = value;
-    if (boltCanvas) boltCanvas.style.opacity = value;
+  function paintBeads2d(w, h) {
+    var n = beadCount(scene.rate || 0), i, b, x, y;
+    for (i = 0; i < n; i++) {
+      b = beads[i];
+      if (!b.on) continue;
+      x = b.x * w;
+      y = b.y * h;
+      if (b.trail > 0.01) {
+        ctx.strokeStyle = 'rgba(210,220,230,0.35)';
+        ctx.lineWidth = b.r * h * 0.45;
+        if (ctx.lineWidth < 1) ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y - b.trail * h);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(226,234,242,0.55)';
+      ctx.beginPath();
+      ctx.arc(x, y, b.r * h, 0, 6.28318);
+      ctx.fill();
+    }
   }
 
-  /** Seconds for the shader. Advanced by a clamped step so a pause cannot throw the streaks off the bottom. */
+  /** Seconds for the shader. A late timer adds at most one frame, so a stall cannot fling the drops off the glass. */
   function stepClock(now) {
     var dt = 0.034;
     if (frameLast) {
@@ -638,9 +832,16 @@ var LiveWeather = (function () {
       if (!(dt > 0) || dt > 0.05) dt = 0.034;
     }
     frameLast = now;
+    lastDt = dt;
     anim += dt;
     if (anim > 3600) anim -= 3600;
     return anim;
+  }
+
+  function noteGap(ms) {
+    var t = Date.now();
+    if (!gapSince || t - gapSince > 10000) { gapMax = ms; gapSince = t; return; }
+    if (ms > gapMax) gapMax = ms;
   }
 
   function schedule(fn) {
@@ -659,16 +860,6 @@ var LiveWeather = (function () {
       frameLast = 0;
       return;
     }
-    var quiet = paused || skipDraw || (holdUntil && Date.now() < holdUntil);
-    skipDraw = false;
-    if (holdUntil && Date.now() >= holdUntil) holdUntil = 0;
-    if (quiet) {
-      frameLast = 0;
-      fadeTo(0.72);
-      schedule(frame);
-      return;
-    }
-    fadeTo(1);
     if (frameLast && mode !== 'overlay' && mode !== 'row') {
       frameAcc += now - frameLast;
       frameN++;
@@ -682,7 +873,10 @@ var LiveWeather = (function () {
         }
       }
     }
+    noteGap(frameLast ? now - frameLast : 34);
     var sec = stepClock(now);
+    if (scene.kind === 'rain' || scene.kind === 'storm') stepBeads(lastDt, scene.rate || 0);
+    else stepBeads(lastDt, 0);
     var wall = Date.now();
     if (scene.kind === 'storm') {
       if (nextBolt < 0) nextBolt = now + 2200 + Math.random() * 4000;
@@ -730,39 +924,44 @@ var LiveWeather = (function () {
   function setMode(next, q) {
     if (!canvas) { mode = next; return; }
     if (next === 'off') {
+      if (mode === 'off') return;
       mode = 'off';
       running = false;
       frameLast = 0;
-      fadeTo(1);
-      canvas.className = 'layer';
-      if (boltCanvas) boltCanvas.className = 'layer';
+      if (canvas.className !== 'layer') canvas.className = 'layer';
+      if (boltCanvas && boltCanvas.className !== 'layer') boltCanvas.className = 'layer';
       return;
     }
     quality = q || quality || 'medium';
     // Behind the home screen the canvas stays small. The screensaver still uses the chosen detail.
     var use = (next === 'overlay' || next === 'row') ? 'low' : (forcedQ || quality);
+    var spec = sizeFor(use);
+    var sizeChanged = canvas.width !== spec.w || canvas.height !== spec.h;
     if (!gl && !ctx) {
       if (!initGL(use) && !ctx) {
         try { ctx = canvas.getContext('2d'); } catch (e2) { ctx = null; }
         if (!ctx) note('no draw');
       }
-    } else if (gl && canvas.width !== sizeFor(use).w) {
-      initGL(use);
-    } else if (ctx && canvas.width !== sizeFor(use).w) {
-      canvas.width = sizeFor(use).w;
-      canvas.height = sizeFor(use).h;
+    } else if (sizeChanged) {
+      if (gl) initGL(use);
+      else {
+        canvas.width = spec.w;
+        canvas.height = spec.h;
+      }
     }
+    var cls = 'layer on ' + next;
+    var changed = mode !== next || sizeChanged;
     mode = next;
-    canvas.className = 'layer on ' + next;
+    if (canvas.className !== cls) canvas.className = cls;
     if (boltCanvas) {
-      boltCanvas.className = canvas.className;
-      boltCanvas.width = canvas.width;
-      boltCanvas.height = canvas.height;
+      if (boltCanvas.className !== cls) boltCanvas.className = cls;
+      if (boltCanvas.width !== canvas.width || boltCanvas.height !== canvas.height) {
+        boltCanvas.width = canvas.width;
+        boltCanvas.height = canvas.height;
+      }
     }
-    note(next + (gl ? ' webgl' : (ctx ? ' canvas' : ' undrawn')));
-    frameLast = 0;
-    fadeTo(1);
-    loopStart();
+    if (changed) note(next + (gl ? ' webgl' : (ctx ? ' canvas' : ' undrawn')));
+    if (!running) loopStart();
   }
 
   function boot(node) {
@@ -1075,16 +1274,12 @@ var LiveWeather = (function () {
     night: night,
     moonPhase: moonPhase,
     boot: boot,
-    setPaused: function (on) {
-      paused = !!on;
-      if (mode !== 'off') loopStart();
-    },
-    skipFrame: function () { skipDraw = true; },
-    hold: function (ms) {
-      var until = Date.now() + ms;
-      if (until > holdUntil) holdUntil = until;
-    },
+    setPaused: function (on) { paused = !!on; if (!paused && mode !== 'off') loopStart(); },
+    skipFrame: function () {},
+    hold: function () {},
     drawn: function () { return drawn; },
+    stats: function () { return {inits: inits, gap: Math.round(gapMax)}; },
+    beadCount: beadCount,
     setMode: setMode,
     mode: function () { return mode; },
     scene: function (next) { if (next) scene = next; return scene; },
