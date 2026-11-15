@@ -100,9 +100,7 @@ body.weather-home #sky { visibility: hidden; }
   height: 442px;
   border-radius: 28px;
   background-color: #10141c;
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
+  overflow: hidden;
   visibility: hidden;
   z-index: 2;
   color: rgba(255, 255, 255, 0.8);
@@ -110,6 +108,25 @@ body.weather-home #sky { visibility: hidden; }
   line-height: 442px;
   text-align: center;
 }
+/* The whole photo, with a blurred copy of itself in the space a wide banner would otherwise crop. */
+#homephotos .matte, #homephotos .matteveil, #homephotos .sharp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1760px;
+  height: 442px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+#homephotos .matte {
+  background-size: cover;
+  -webkit-transform: scale(1.18);
+  transform: scale(1.18);
+  -webkit-filter: blur(26px);
+  filter: blur(26px);
+}
+#homephotos .matteveil { background: rgba(0, 0, 0, 0.42); }
+#homephotos .sharp { background-size: contain; }
 body.content-photos #homephotos { visibility: visible; }
 body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
 .drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.tucked { opacity: 0; }
@@ -705,8 +722,26 @@ body.tinted #wash { opacity: 0.34; }
 #saver.on { opacity: 1; visibility: visible; -webkit-transition-delay: 0s; transition-delay: 0s; }
 #saver .photo { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0; -webkit-transition: opacity 2.4s, -webkit-transform 24s linear; transition: opacity 2.4s, transform 24s linear; }
 #saver .photo.on { opacity: 1; }
-/* The shared album. Fill covers the screen; fit shows the whole photo on black. The clock is smaller than the picks' one. */
-#saver.album.fit .photo { background-size: contain; background-color: #000; }
+/* The shared album shows the whole photo. A blurred, darkened copy fills what contain leaves empty. */
+#saver.album .photo { overflow: hidden; background-image: none; -webkit-transform: none; transform: none; -webkit-transition: opacity 1.2s ease; transition: opacity 1.2s ease; }
+#saver.album .matte, #saver.album .matteveil, #saver.album .sharp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+#saver.album .matte {
+  background-size: cover;
+  -webkit-transform: scale(1.14);
+  transform: scale(1.14);
+  -webkit-filter: blur(36px);
+  filter: blur(36px);
+}
+#saver.album .matteveil { background: rgba(0, 0, 0, 0.4); }
+#saver.album .sharp { background-size: contain; }
 #saver.album .clock { bottom: 72px; padding: 18px 32px 20px; border-radius: 32px; }
 #saver.album .clock .time { font-size: 72px; }
 #saver.album .clock .date { margin-top: 6px; font-size: 28px; }

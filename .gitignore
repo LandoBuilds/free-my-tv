@@ -14,6 +14,7 @@ out/
 *.wgt
 !dist/FreeMyTV-tizen-1.5.3.wgt
 !dist/FreeMyTV-tizen-1.5.4.wgt
+!dist/FreeMyTV-tizen-1.5.5.wgt
 __pycache__/
 
 # macOS

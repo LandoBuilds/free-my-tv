@@ -2294,6 +2294,22 @@
     return odd ? 'scale(1.12) translate(1.5%, 1%)' : 'scale(1.06) translate(-1%, -1%)';
   }
 
+  /** A slow drift that never scales the photo past the screen, so the whole picture stays visible. */
+  function albumKen(index, end) {
+    var odd = index % 2;
+    var shift = odd ? '0.8%' : '-0.8%';
+    if (end) return 'scale(1) translate(' + shift + ', 0)';
+    return 'scale(0.98) translate(' + (odd ? '-0.8%' : '0.8%') + ', 0)';
+  }
+
+  function albumFrame(parent) {
+    var photo = el('div', 'photo', parent);
+    el('div', 'matte', photo);
+    el('div', 'matteveil', photo);
+    el('div', 'sharp', photo);
+    return photo;
+  }
+
   /** The shared album, full screen: a crossfade, and a slow zoom when that transition is picked. */
   function showAlbumSaver() {
     var list = ICloud.playlist();
@@ -2305,7 +2321,7 @@
     setClass(s, 'album', true);
     setClass(s, 'fit', Prefs.icloudFit());
     setClass(s, 'noclock', !Prefs.icloudClock());
-    var a = el('div', 'photo', s), b = el('div', 'photo', s);
+    var a = albumFrame(s), b = albumFrame(s);
     el('div', 'shade', s);
     var clock = el('div', 'clock', s);
     el('div', 'time', clock);
@@ -2326,23 +2342,26 @@
       shownPhoto = photo.url || '';
       reportStatus();
       var back = front === a ? b : a;
-      var ken = Prefs.icloudKen(), fit = Prefs.icloudFit(), ms = Prefs.icloudInterval() * 1000;
+      var ken = Prefs.icloudKen(), ms = Prefs.icloudInterval() * 1000;
       var shown = cssUrl(photo.url);
+      var sharp = back.querySelector('.sharp');
       var img = new Image();
       img.onload = function () {
         if (!saverOn || gen !== saverGen || !shown) return;
         skips = 0;
-        back.style.backgroundImage = shown;
-        back.style.webkitTransition = back.style.transition = 'none';
-        back.style.webkitTransform = back.style.transform = ken ? kenAt(n, false, fit) : 'scale(1)';
+        back.querySelector('.matte').style.backgroundImage = shown;
+        sharp.style.backgroundImage = shown;
+        sharp.style.webkitTransition = sharp.style.transition = 'none';
+        sharp.style.webkitTransform = sharp.style.transform = ken ? albumKen(n, false) : 'scale(1)';
         setTimeout(function () {
           if (!saverOn || gen !== saverGen) return;
-          var fade = 'opacity 1.2s ease' + (ken ? ', -webkit-transform ' + ms + 'ms linear' : '');
-          back.style.webkitTransition = fade;
-          back.style.transition = 'opacity 1.2s ease' + (ken ? ', transform ' + ms + 'ms linear' : '');
+          if (ken) {
+            sharp.style.webkitTransition = '-webkit-transform ' + ms + 'ms linear';
+            sharp.style.transition = 'transform ' + ms + 'ms linear';
+            sharp.style.webkitTransform = sharp.style.transform = albumKen(n, true);
+          }
           setClass(back, 'on', true);
           setClass(front, 'on', false);
-          if (ken) back.style.webkitTransform = back.style.transform = kenAt(n, true, fit);
           front = back;
         }, 40);
       };
@@ -2484,20 +2503,31 @@
       if (Prefs.homeShow() !== 'photos') { homePhotoTimer = 0; return; }
       var box = $('homephotos'), list = ICloud.playlist();
       if (!list.length) {
-        box.style.backgroundImage = '';
+        box.innerHTML = '';
         box.textContent = tr('No album yet');
       } else {
         var photo = list[homePhotoAt % list.length];
         homePhotoAt++;
         shownPhoto = photo.url || '';
         reportStatus();
-        var shown = cssUrl(photo.url);
-        box.textContent = '';
-        if (shown) box.style.backgroundImage = shown;
+        paintFramed(box, cssUrl(photo.url));
       }
       homePhotoTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 8) * 1000);
     }
     step();
+  }
+
+  /** The sharp photo, contained, over a blurred and darkened copy of the same picture. */
+  function paintFramed(box, shown) {
+    var matte = box.querySelector('.matte');
+    if (!matte) {
+      box.textContent = '';
+      matte = el('div', 'matte', box);
+      el('div', 'matteveil', box);
+      el('div', 'sharp', box);
+    }
+    matte.style.backgroundImage = shown || '';
+    box.querySelector('.sharp').style.backgroundImage = shown || '';
   }
 
   function stopHomePhotos() {
