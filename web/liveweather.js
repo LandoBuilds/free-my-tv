@@ -233,11 +233,13 @@ var LiveWeather = (function () {
     '  float h = texture2D(uDrops, vUv).a;',
     '  float hx = texture2D(uDrops, vUv + vec2(px.x, 0.0)).a;',
     '  float hy = texture2D(uDrops, vUv + vec2(0.0, px.y)).a;',
-    '  vec2 refr = vec2(hx - h, hy - h) * 1.4;',
-    '  vec3 col = texture2D(uBg, clamp(vUv + refr, 0.0, 1.0)).rgb;',
-    '  float lip = smoothstep(0.2, 0.55, h) * (1.0 - smoothstep(0.7, 0.95, h));',
-    '  col += vec3(0.04, 0.045, 0.05) * lip;',
-    '  float cover = smoothstep(0.04, 0.18, h);',
+    '  vec2 refr = vec2(hx - h, hy - h) * 0.9;',
+    '  float cover = smoothstep(0.08, 0.28, h);',
+    '  vec3 bent = texture2D(uBg, clamp(vUv + refr, 0.0, 1.0)).rgb;',
+    '  vec3 water = vec3(0.78, 0.82, 0.86);',
+    '  vec3 col = mix(water, bent, 0.72);',
+    '  float lip = smoothstep(0.2, 0.5, h) * (1.0 - smoothstep(0.62, 0.92, h));',
+    '  col += vec3(1.0, 1.0, 1.0) * lip * 0.12;',
     '  gl_FragColor = vec4(col, cover);',
     '}'
   ].join('\n');
@@ -845,8 +847,11 @@ var LiveWeather = (function () {
     var t0 = now;
     gl.bindFramebuffer(gl.FRAMEBUFFER, blurTex.fb);
     gl.viewport(0, 0, blurTex.w, blurTex.h);
+    gl.clearColor(0.55, 0.62, 0.7, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     applySky(prog, locs);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);
     blurKey = key;

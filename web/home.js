@@ -686,7 +686,7 @@
     function take(img) {
       var edge = job.edge, photo = job.photo;
       var dw = edge <= 220 ? 96 : paneWidth(photo.w || img.width, photo.h || img.height);
-      var dh = edge <= 220 ? 54 : 352;
+      var dh = edge <= 220 ? 54 : 472;
       var c = document.createElement('canvas');
       drawContain(c, img, dw, dh);
       releaseImage(img);
@@ -2722,10 +2722,9 @@
   /** Width of the photo pane: the banner height times the picture's shape, capped so the date still fits. */
   function paneWidth(w, h) {
     var ratio = w > 0 && h > 0 ? w / h : 1.5;
-    var width = Math.round(352 * ratio);
-    if (width > 980) width = 980;
-    if (width > 1760 - 480) width = 1760 - 480;
-    if (width < 220) width = 220;
+    var width = Math.round(472 * ratio);
+    if (width > 1400) width = 1400;
+    if (width < 280) width = 280;
     return width;
   }
 
@@ -2798,7 +2797,7 @@
       setTimeout(function () {
         if (bannerReady && bannerReady.url === url) { releaseImage(img); return; }
         var c = document.createElement('canvas');
-        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 352);
+        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 472);
         bannerReady = {url: url, canvas: c};
         releaseImage(img);
       }, 0);
@@ -2867,7 +2866,7 @@
     function decoded() {
       setTimeout(function () {
         var c = document.createElement('canvas');
-        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 352);
+        drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 472);
         bannerReady = {url: shown, canvas: c};
         reveal(c);
         releaseImage(img);

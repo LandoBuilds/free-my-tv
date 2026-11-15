@@ -82,6 +82,15 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* Home weather sits on the sky and under the shelf. Hiding the photo keeps a see-through canvas from leaving the poster up. */
 #live.overlay, #livebolt.overlay { z-index: 1; }
 body.weather-home #sky { visibility: hidden; }
+/* Light type: the rain sky behind the header is dark, and the controls sit above that canvas. */
+body.weather-home #title,
+body.weather-home #glance,
+body.weather-home .tab.on,
+body.weather-home .tab.focus { color: #F5F5F7; }
+body.weather-home .tab { color: rgba(245, 245, 247, 0.72); }
+body.weather-home #homephotos .when,
+body.weather-home #homephotos .cap { color: #F5F5F7; }
+body.weather-home #homephotos .ago { color: rgba(245, 245, 247, 0.72); }
 #live.row, #livebolt.row {
   left: 80px;
   top: 262px;
@@ -95,23 +104,23 @@ body.weather-home #sky { visibility: hidden; }
 #homephotos {
   position: absolute;
   left: 80px;
-  top: 262px;
+  top: 278px;
   width: 1760px;
-  height: 442px;
+  height: 530px;
   visibility: hidden;
-  z-index: 2;
+  z-index: 3;
   color: rgba(255, 255, 255, 0.8);
   font-size: 32px;
-  line-height: 442px;
-  text-align: center;
+  line-height: 1.2;
+  text-align: left;
 }
-/* A pane the shape of the photo. The date sits under the picture, in a fixed strip, so a new photo does not move the shelf. */
+/* The picture fills the gap under the quick buttons, down to the caption. Width follows the photo. */
 #homephotos .pane {
   position: absolute;
   left: 0;
   top: 0;
-  width: 980px;
-  height: 442px;
+  width: 1400px;
+  height: 530px;
 }
 #homephotos .shot {
   position: absolute;
@@ -125,11 +134,11 @@ body.weather-home #sky { visibility: hidden; }
 #homephotos .info {
   position: absolute;
   left: 0;
-  top: 360px;
+  top: 476px;
   width: 360px;
-  height: 78px;
+  height: 52px;
   overflow: hidden;
-  line-height: 1.2;
+  line-height: 1.15;
   text-align: left;
 }
 #homephotos .when { font-size: 22px; font-weight: 560; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -143,7 +152,7 @@ body.weather-home #sky { visibility: hidden; }
 body.content-photos #homephotos { visibility: visible; }
 body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
 .drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.tucked { opacity: 0; }
-#home { z-index: 1; }
+#home { z-index: 4; }
 #drawer { z-index: 2; }
 .sheet { z-index: 3; }
 #saver { z-index: 4; }
