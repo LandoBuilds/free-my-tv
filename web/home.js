@@ -456,7 +456,7 @@
   }
 
   function settleFocus() {
-    if (st.zone === Z.CARDS || st.zone === Z.TOP) layoutCards();
+    if (st.zone === Z.CARDS || (st.zone === Z.TOP && st.top < 3)) layoutCards();
     if (st.zone === Z.SHELF) revealShelf();
     if (st.zone === Z.APPS) {
       var rows = Math.max(1, Math.ceil(others.length / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
@@ -2507,7 +2507,7 @@
     if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
   }
 
-  var homePhotoTimer = 0, homePhotoAt = 0, bannerGen = 0;
+  var homePhotoTimer = 0, homePhotoAt = 0, bannerGen = 0, bannerReady = null;
 
   function applyHomeContent() {
     var mode = Prefs.homeShow();
@@ -2534,6 +2534,8 @@
         shownPhoto = photo.url || '';
         reportStatus();
         paintBanner(box, photo);
+        var nxt = list[homePhotoAt % list.length];
+        if (nxt && nxt !== photo) preloadBanner(nxt);
       }
       homePhotoTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 8) * 1000);
     }
@@ -2580,22 +2582,32 @@
     el('div', 'cap', info);
   }
 
-  function placeBanner(box, width) {
-    var pane = box.querySelector('.pane');
-    var info = box.querySelector('.info');
-    var rtl = body.className.indexOf('rtl') >= 0;
-    pane.style.width = width + 'px';
-    if (rtl) {
-      pane.style.left = 'auto';
-      pane.style.right = '0px';
-      info.style.left = '8px';
-      info.style.right = (width + 40) + 'px';
-    } else {
-      pane.style.right = 'auto';
-      pane.style.left = '0px';
-      info.style.right = '8px';
-      info.style.left = (width + 40) + 'px';
-    }
+  function drawContain(canvas, img, w, h) {
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = w;
+    canvas.height = h;
+    var iw = img.width || 1, ih = img.height || 1;
+    var scale = Math.min(w / iw, h / ih);
+    var dw = Math.round(iw * scale), dh = Math.round(ih * scale);
+    ctx.fillStyle = '#1c2430';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, Math.round((w - dw) / 2), Math.round((h - dh) / 2), dw, dh);
+  }
+
+  function preloadBanner(photo) {
+    if (!photo || !photo.url) return;
+    if (bannerReady && bannerReady.url === photo.url) return;
+    var img = new Image();
+    var url = photo.url;
+    img.onload = function () {
+      if (bannerReady && bannerReady.url === url) return;
+      var c = document.createElement('canvas');
+      drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 442);
+      bannerReady = {url: url, canvas: c};
+    };
+    img.src = url;
+    try { if (img.decode) img.decode(); } catch (e) {}
   }
 
   function showBannerText(box, photo) {
@@ -2620,36 +2632,38 @@
     cap.textContent = caption;
   }
 
-  /** The whole photo, in a pane its own shape, with the date and caption beside it. */
+  /** The whole photo, already scaled, fading in. The pane does not change width, so the row is not laid out again. */
   function paintBanner(box, photo) {
     bannerNodes(box);
-    var width = paneWidth(photo.w, photo.h);
-    placeBanner(box, width);
     showBannerText(box, photo);
+    if (typeof LiveWeather !== 'undefined' && LiveWeather.hold) LiveWeather.hold(450);
     var shots = box.querySelectorAll('.shot');
     var back = shots[0].className.indexOf('on') >= 0 ? shots[1] : shots[0];
     var front = back === shots[0] ? shots[1] : shots[0];
     var shown = photo.url || '';
     if (!shown) return;
     var mine = ++bannerGen;
-    var img = new Image();
-    img.onload = function () {
+    function reveal(src) {
       if (mine !== bannerGen || Prefs.homeShow() !== 'photos') return;
       var ctx = back.getContext('2d');
       if (!ctx) return;
-      back.width = width;
-      back.height = 442;
-      var iw = img.width || photo.w || 1, ih = img.height || photo.h || 1;
-      var scale = Math.min(width / iw, 442 / ih);
-      var dw = Math.round(iw * scale), dh = Math.round(ih * scale);
-      ctx.fillStyle = '#1c2430';
-      ctx.fillRect(0, 0, width, 442);
-      ctx.drawImage(img, Math.round((width - dw) / 2), Math.round((442 - dh) / 2), dw, dh);
+      back.width = src.width;
+      back.height = src.height;
+      ctx.drawImage(src, 0, 0);
       setClass(back, 'on', true);
       setClass(front, 'on', false);
+    }
+    if (bannerReady && bannerReady.url === shown) { reveal(bannerReady.canvas); return; }
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 442);
+      bannerReady = {url: shown, canvas: c};
+      reveal(c);
     };
     img.onerror = function () { ICloud.noteBroken(); };
     img.src = shown;
+    try { if (img.decode) img.decode(); } catch (e2) {}
   }
 
   function stopHomePhotos() {
@@ -2767,7 +2781,7 @@
 
   // MARK: - Keys
 
-  var hud = null, hudOn = false, hudFrames = 0, hudFps = 0, hudStamp = 0, hudText = '';
+  var hud = null, hudOn = false, hudFrames = 0, hudFps = 0, hudStamp = 0, hudText = '', hudRain = 0, hudRainMark = 0;
 
   function nowMs() {
     return (window.performance && performance.now) ? performance.now() : Date.now();
@@ -2775,7 +2789,7 @@
 
   function paintHud() {
     if (!hud) return;
-    var line = 'fps ' + hudFps + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
+    var line = 'ui ' + hudFps + '   rain ' + hudRain + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
     if (hud.textContent !== line) hud.textContent = line;
   }
 
@@ -2786,6 +2800,9 @@
     if (!hudStamp) hudStamp = now;
     if (now - hudStamp >= 500) {
       hudFps = Math.round(hudFrames * 1000 / (now - hudStamp));
+      var draws = (typeof LiveWeather !== 'undefined' && LiveWeather.drawn) ? LiveWeather.drawn() : 0;
+      hudRain = Math.round((draws - hudRainMark) * 1000 / (now - hudStamp));
+      hudRainMark = draws;
       hudFrames = 0;
       hudStamp = now;
       paintHud();
@@ -2815,6 +2832,7 @@
     var t0 = nowMs();
     if (k === 405) { toggleHud(); e.preventDefault(); return; }
     if (typeof LiveWeather !== 'undefined' && LiveWeather.skipFrame) LiveWeather.skipFrame();
+    if (typeof LiveWeather !== 'undefined' && LiveWeather.hold) LiveWeather.hold(2000);
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
     if (!saverOn && !ambientOn && !sheetOpen() && k === 403) { startScreen(); e.preventDefault(); return; }
     if (typing(k)) return;

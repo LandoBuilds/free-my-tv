@@ -220,7 +220,7 @@ var LiveWeather = (function () {
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
   var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
-  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, skipDraw = false;
+  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, skipDraw = false, holdUntil = 0, drawn = 0;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -623,6 +623,10 @@ var LiveWeather = (function () {
   }
 
   function schedule(fn) {
+    if (mode === 'overlay' || mode === 'row') {
+      setTimeout(function () { fn(Date.now()); }, 34);
+      return;
+    }
     var again = window.requestAnimationFrame || function (cb) { return setTimeout(function () { cb(Date.now()); }, 32); };
     again(fn);
   }
@@ -630,9 +634,8 @@ var LiveWeather = (function () {
   function frame(now) {
     if (!running || !canvas) return;
     if (paused || (typeof document !== 'undefined' && document.hidden)) { running = false; return; }
-    // Home weather is behind the shelf: 30 fps is enough, and it keeps the remote responsive.
-    var gap = (mode === 'overlay' || mode === 'row') ? 33 : 0;
-    if (gap && frameLast && now - frameLast < gap) { schedule(frame); return; }
+    if (holdUntil && Date.now() < holdUntil) { schedule(frame); return; }
+    holdUntil = 0;
     if (skipDraw) { skipDraw = false; schedule(frame); return; }
     if (frameLast && mode !== 'overlay' && mode !== 'row') {
       frameAcc += now - frameLast;
@@ -675,6 +678,7 @@ var LiveWeather = (function () {
     }
     if (gl && prog) drawGL(sec);
     else if (ctx) draw2d(sec);
+    drawn++;
     if (boltLife > 0) {
       drawBolt2d();
       boltSeen = true;
@@ -1042,6 +1046,11 @@ var LiveWeather = (function () {
       else if (mode !== 'off') loopStart();
     },
     skipFrame: function () { skipDraw = true; },
+    hold: function (ms) {
+      var until = Date.now() + ms;
+      if (until > holdUntil) holdUntil = until;
+    },
+    drawn: function () { return drawn; },
     setMode: setMode,
     mode: function () { return mode; },
     scene: function (next) { if (next) scene = next; return scene; },
