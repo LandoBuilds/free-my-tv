@@ -42,6 +42,9 @@ expect(W.rate(0, false), 0, 'nothing to draw');
 expect(W.rate(0.2, true) < W.rate(2, true), true, 'heavier rain is stronger');
 expect(W.rate(8, true), 1, 'a downpour is full');
 expect(W.rate(null, false), 0, 'no measurement and no code');
+expect(W.moonPhase(Date.UTC(2000, 0, 6, 18, 14)) < 0.01, true, 'the known new moon');
+var full = W.moonPhase(Date.UTC(2000, 0, 6, 18, 14) + 29.53058867 * 86400000 * 0.5);
+expect(full > 0.49 && full < 0.51, true, 'half a month later is full');
 
 if (failures) {
   console.error(failures + ' failed');

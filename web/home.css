@@ -78,7 +78,38 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* Each part is its own stack, so a focused tile (z-index) never shows over the drawer, a sheet or the screensaver. */
 #live { z-index: 1; pointer-events: none; visibility: hidden; }
 #live.on { visibility: visible; }
-#live.full, #live.glass { z-index: 5; }
+#live.full, #live.glass, #livebolt.full, #livebolt.glass { z-index: 5; }
+#live.row, #livebolt.row {
+  left: 80px;
+  top: 262px;
+  width: 1760px;
+  height: 442px;
+  z-index: 2;
+  border-radius: 28px;
+}
+#livebolt { pointer-events: none; visibility: hidden; }
+#livebolt.on { visibility: visible; }
+#homephotos {
+  position: absolute;
+  left: 80px;
+  top: 262px;
+  width: 1760px;
+  height: 442px;
+  border-radius: 28px;
+  background-color: #10141c;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  visibility: hidden;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 32px;
+  line-height: 442px;
+  text-align: center;
+}
+body.content-photos #homephotos { visibility: visible; }
+body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
+.drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.tucked { opacity: 0; }
 #home { z-index: 1; }
 #drawer { z-index: 2; }
 .sheet { z-index: 3; }
@@ -97,6 +128,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 #liveinfo.on { visibility: visible; }
+#liveinfo.tucked { left: 108px; top: 520px; bottom: auto; }
 #liveinfo .temp { font-size: 92px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
 #liveinfo .cond { margin-top: 6px; font-size: 32px; font-weight: 500; }
 #liveinfo .meta { margin-top: 8px; font-size: 24px; color: rgba(255, 255, 255, 0.82); }

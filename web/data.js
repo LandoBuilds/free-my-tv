@@ -94,6 +94,11 @@ var Prefs = (function () {
       var f = pick('liveForce', 'auto');
       return f === 'clear' || f === 'rain' || f === 'storm' || f === 'snow' || f === 'fog' || f === 'night' ? f : 'auto';
     },
+    /** What fills the recommendations row: 'picks', 'weather' or 'photos'. */
+    homeShow: function () {
+      var s = pick('homeShow', 'picks');
+      return s === 'weather' || s === 'photos' ? s : 'picks';
+    },
     /** Dimming over the picture, for a dark room: 'off', 'low', 'medium', 'high' or 'auto' (medium at night). */
     dim: function () { return pick('dim', 'off'); },
     /** The weather card's forecast: 'hours' (the next 6 hours) or 'days' (the next 5 days). */

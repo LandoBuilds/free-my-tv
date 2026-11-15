@@ -968,6 +968,8 @@
         step: function () { Prefs.set('liveSound', !Prefs.liveSound()); }},
       {label: tr('Preview weather'), value: liveForceLabel(),
         step: function (d) { cycle('liveForce', ['auto', 'clear', 'rain', 'storm', 'snow', 'fog', 'night'], Prefs.liveForce(), d); pushScene(); }},
+      {label: tr('Home content'), value: homeShowLabel(),
+        step: function (d) { cycle('homeShow', ['picks', 'weather', 'photos'], Prefs.homeShow(), d); applyHomeContent(); }},
       {label: tr('iCloud photos'), value: icloudStatus(), opens: true, icloud: true,
         step: function (d) { if (d >= 0) openAlbum(); }},
       {label: tr('Picks per tab'), value: String(I18N.digits(Prefs.cards())),
@@ -1868,7 +1870,7 @@
         if (dx) st.shelf = Math.max(0, Math.min(shelf.length - 1, st.shelf + dx));
         else if (dy > 0) { openDrawer(); return; }
         else if (dy < 0) {
-          if (cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
+          if (Prefs.homeShow() === 'picks' && cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
           else { st.zone = Z.TOP; st.top = Data.hasKey() ? st.tab : 3; }
         }
         break;
@@ -1882,7 +1884,7 @@
           st.top = Math.max(Data.hasKey() ? 0 : 3, Math.min(5, st.top + dx));   // without the picks the tabs can't hold focus
           if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
-          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
+          if (Prefs.homeShow() === 'picks' && cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
           else st.zone = Z.SHELF;
         }
         break;
@@ -2009,6 +2011,11 @@
   function liveQualityLabel() {
     var q = Prefs.liveQuality();
     return q === 'low' ? tr('dim|Low') : q === 'high' ? tr('dim|High') : tr('dim|Medium');
+  }
+
+  function homeShowLabel() {
+    var m = Prefs.homeShow();
+    return m === 'weather' ? tr('Live weather') : m === 'photos' ? tr('Photos') : tr('Recommendations');
   }
 
   function liveForceLabel() {
@@ -2218,13 +2225,16 @@
     var full = saverOn && saverMode() === 'live';
     var over = !full && !ambientOn && !sheetOpen() && ((saverOn && Prefs.livePhotos()) || (!saverOn && Prefs.liveHome()));
     if (document.hidden || resting()) { LiveWeather.setMode('off'); setClass($('liveinfo'), 'on', false); return; }
+    var row = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
     if (full) LiveWeather.setMode('full', Prefs.liveQuality());
     else if (saverOn && Prefs.livePhotos()) LiveWeather.setMode('glass', Prefs.liveQuality());
+    else if (row) LiveWeather.setMode('row', Prefs.liveQuality());
     else if (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome()) LiveWeather.setMode('overlay', Prefs.liveQuality());
     else LiveWeather.setMode('off');
     pushScene();
-    setClass($('liveinfo'), 'on', full);
-    if (full || over) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
+    setClass($('liveinfo'), 'on', full || row);
+    setClass($('liveinfo'), 'tucked', row);
+    if (full || over || row) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
   }
 
   function renderLiveInfo() {
@@ -2242,6 +2252,44 @@
     var alert = LiveWeather.alert();
     if (alert) el('div', 'alert', box, alert);
     if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
+  }
+
+  var homePhotoTimer = 0, homePhotoAt = 0;
+
+  function applyHomeContent() {
+    var mode = Prefs.homeShow();
+    setClass(body, 'content-weather', mode === 'weather');
+    setClass(body, 'content-photos', mode === 'photos');
+    if (mode !== 'picks' && st.zone === Z.CARDS) st.zone = Z.SHELF;
+    if (mode === 'photos') startHomePhotos();
+    else stopHomePhotos();
+    syncLive();
+    updateFocus();
+  }
+
+  function startHomePhotos() {
+    if (homePhotoTimer) return;
+    function step() {
+      if (Prefs.homeShow() !== 'photos') { homePhotoTimer = 0; return; }
+      var box = $('homephotos'), list = ICloud.playlist();
+      if (!list.length) {
+        box.style.backgroundImage = '';
+        box.textContent = tr('No album yet');
+      } else {
+        var photo = list[homePhotoAt % list.length];
+        homePhotoAt++;
+        var shown = cssUrl(photo.url);
+        box.textContent = '';
+        if (shown) box.style.backgroundImage = shown;
+      }
+      homePhotoTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 8) * 1000);
+    }
+    step();
+  }
+
+  function stopHomePhotos() {
+    clearTimeout(homePhotoTimer);
+    homePhotoTimer = 0;
   }
 
   function showLiveSaver() {
@@ -2448,6 +2496,7 @@
   });
   ICloud.boot();
   LiveWeather.boot($('live'));
+  applyHomeContent();
   Data.onChange(function () { if (LiveWeather.mode() !== 'off') pushScene(); });
   fit();
   renderTop();
@@ -2476,11 +2525,15 @@
       var wait = ICloud.problem() ? 2 * 60000 : 30 * 60000;
       if (Date.now() - ICloud.fetchedAt() > wait) ICloud.sync();
     }
-    if (saverOn) tickSaverClock($('saver').querySelector('.clock'));
+    if (saverOn) {
+      var saverClock = $('saver').querySelector('.clock');
+      if (saverClock) tickSaverClock(saverClock);
+    }
     if (ambientOn) tickAmbient();
   }, 30000);
 
   // For the browser preview and tests.
   window.FreeMyTV = {state: st, move: move, activate: activate, back: back, showSaver: showSaver, hideSaver: hideSaver, toast: toast,
-    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim, showLive: showLiveSaver, syncLive: syncLive};
+    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim, showLive: showLiveSaver, syncLive: syncLive,
+    homeContent: applyHomeContent};
 })();

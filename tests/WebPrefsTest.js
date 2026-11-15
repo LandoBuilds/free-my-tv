@@ -110,6 +110,10 @@ expect(prefs({liveQuality: 'huge'}).liveQuality(), 'medium', 'not a detail');
 expect(prefs({}).liveForce(), 'auto', 'the real forecast');
 expect(prefs({liveForce: 'storm'}).liveForce(), 'storm', 'a preview storm');
 expect(prefs({liveForce: 'wind'}).liveForce(), 'auto', 'not a preview');
+expect(prefs({}).homeShow(), 'picks', 'recommendations stay in the row');
+expect(prefs({homeShow: 'weather'}).homeShow(), 'weather', 'live weather in the row');
+expect(prefs({homeShow: 'photos'}).homeShow(), 'photos', 'photos in the row');
+expect(prefs({homeShow: 'nope'}).homeShow(), 'picks', 'not a home row');
 
 if (failures) process.exit(1);
 console.log('WebPrefsTest: all checks passed.');
