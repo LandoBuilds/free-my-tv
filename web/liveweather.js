@@ -171,11 +171,9 @@ var LiveWeather = (function () {
     '    }',
     '    col = mix(col, vec3(0.78, 0.80, 0.83), clamp(fog, 0.0, 0.92));',
     '  }',
-    '  if ((uKind > 2.5 && uKind < 3.5) || uKind > 4.5) {',
-    '    float far = rainLayer(uv, 40.0, 1.0, 0.72, 0.045, 1.3) * 0.1;',
-    '    float mid = 0.0;',
-    '    if (uLite < 0.5) mid = rainLayer(uv + vec2(0.37, 0.2), 22.0, 2.0, 0.8, 0.03, 4.4) * 0.12;',
-    '    col += vec3(0.72, 0.8, 0.88) * (far + mid);',
+    '  if (uLite < 0.5 && ((uKind > 2.5 && uKind < 3.5) || uKind > 4.5)) {',
+    '    float far = rainLayer(uv, 36.0, 1.0, 0.55, 0.03, 2.0) * 0.035;',
+    '    col += vec3(0.7, 0.78, 0.86) * far;',
     '  }',
     '  if (uKind > 3.5 && uKind < 4.5) {',
     '    float s = 0.0;',
@@ -228,16 +226,19 @@ var LiveWeather = (function () {
   var DROP_FS = [
     'precision mediump float;',
     'uniform sampler2D uBg;',
-    'uniform sampler2D uSprite;',
+    'uniform sampler2D uDrops;',
     'varying vec2 vUv;',
-    'varying vec2 vLocal;',
     'void main(){',
-    '  vec4 sp = texture2D(uSprite, vLocal);',
-    '  if (sp.a < 0.08) discard;',
-    '  vec2 n = sp.rg * 2.0 - 1.0;',
-    '  vec3 col = texture2D(uBg, clamp(vUv + n * 0.02 * sp.a, 0.0, 1.0)).rgb;',
-    '  col += vec3(0.55, 0.6, 0.66) * sp.b * sp.a;',
-    '  gl_FragColor = vec4(col, 1.0);',
+    '  vec2 px = vec2(0.003125, 0.005556);',
+    '  float h = texture2D(uDrops, vUv).a;',
+    '  float hx = texture2D(uDrops, vUv + vec2(px.x, 0.0)).a;',
+    '  float hy = texture2D(uDrops, vUv + vec2(0.0, px.y)).a;',
+    '  vec2 refr = vec2(hx - h, hy - h) * 1.4;',
+    '  vec3 col = texture2D(uBg, clamp(vUv + refr, 0.0, 1.0)).rgb;',
+    '  float lip = smoothstep(0.2, 0.55, h) * (1.0 - smoothstep(0.7, 0.95, h));',
+    '  col += vec3(0.04, 0.045, 0.05) * lip;',
+    '  float cover = smoothstep(0.04, 0.18, h);',
+    '  gl_FragColor = vec4(col, cover);',
     '}'
   ].join('\n');
 
@@ -250,7 +251,8 @@ var LiveWeather = (function () {
 
   var canvas = null, boltCanvas = null, boltCtx = null, gl = null, ctx = null, prog = null, glassProg = null, quad = null;
   var dropProg = null, copyProg = null, sceneTex = null, blurTex = null, spriteTex = null, dropLocs = null, copyLocs = null;
-  var blurAt = 0, blurKey = '';
+  var dropTex = null, dropCanvas = null, dropCtx = null, dropStampImg = null, simReady = false;
+  var stills = [], slides = [];
   var target = null, mode = 'off', running = false, quality = 'medium', forcedQ = '';
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
@@ -467,7 +469,7 @@ var LiveWeather = (function () {
       if (!gl) { note('no WebGL'); return false; }
       prog = program(fragmentSource());
       copyProg = program(COPY_FS);
-      dropProg = program(DROP_FS, DROP_VS);
+      dropProg = program(DROP_FS);
       if (!prog) { note('shader failed, using canvas'); loseGL(); return false; }
       inits++;
       quad = gl.createBuffer();
@@ -496,14 +498,15 @@ var LiveWeather = (function () {
         dropLocs = {
           a: gl.getAttribLocation(dropProg, 'a'),
           bg: gl.getUniformLocation(dropProg, 'uBg'),
-          sprite: gl.getUniformLocation(dropProg, 'uSprite'),
+          drops: gl.getUniformLocation(dropProg, 'uDrops'),
           rect: gl.getUniformLocation(dropProg, 'uRect')
         };
       }
       note('gl ready ' + spec.w + 'x' + spec.h);
     }
     if (!blurTex) blurTex = makeTarget(320, 180);
-    if (!spriteTex) spriteTex = makeSprite();
+    if (!dropTex) dropTex = makeTarget(320, 180);
+    ensureDropSim();
     blurKey = '';
     return true;
   }
@@ -851,9 +854,132 @@ var LiveWeather = (function () {
     if (typeof Pace !== 'undefined') Pace.note('blur-upload', Date.now() - t0);
   }
 
+  var DROP_W = 320, DROP_H = 180;
+
+  function ensureDropSim() {
+    if (simReady) return;
+    simReady = true;
+    var i, t, trails;
+    dropCanvas = document.createElement('canvas');
+    dropCanvas.width = DROP_W;
+    dropCanvas.height = DROP_H;
+    dropCtx = dropCanvas.getContext('2d');
+    dropStampImg = document.createElement('canvas');
+    dropStampImg.width = 32;
+    dropStampImg.height = 32;
+    var g = dropStampImg.getContext('2d');
+    var rad = g.createRadialGradient(16, 16, 1, 16, 16, 16);
+    rad.addColorStop(0, 'rgba(255,255,255,0.2)');
+    rad.addColorStop(0.62, 'rgba(255,255,255,0.75)');
+    rad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = rad;
+    g.beginPath();
+    g.arc(16, 16, 16, 0, 6.28318);
+    g.fill();
+    for (i = 0; i < 56; i++) stills.push({x: ((i * 37) % 97) / 97, y: ((i * 53) % 89) / 89, r: 1.6 + (i % 3) * 0.7, on: 0});
+    for (i = 0; i < 8; i++) {
+      trails = [];
+      for (t = 0; t < 8; t++) trails.push({x: 0, y: 0, life: 0});
+      slides.push({x: 0.1, y: 0.2, r: 5, vy: 0, phase: i, wait: 1, on: 0, tick: 0, trailN: 0, trails: trails});
+    }
+  }
+
+  function stepGlass(dt) {
+    ensureDropSim();
+    var n = glassCount();
+    var slideN = n === 0 ? 0 : (n < 10 ? 2 : (n < 18 ? 5 : 8));
+    var stillN = n === 0 ? 0 : (n < 10 ? 22 : (n < 18 ? 40 : 56));
+    var i, j, a, b, dx, dy;
+    for (i = 0; i < stills.length; i++) stills[i].on = i < stillN ? 1 : 0;
+    for (i = 0; i < slides.length; i++) {
+      a = slides[i];
+      if (i >= slideN) { a.on = 0; continue; }
+      if (!a.on) {
+        a.on = 1;
+        a.x = (i * 0.17 + 0.08) % 1;
+        a.y = (i * 0.13) % 1;
+        a.r = 4 + (i % 3);
+        a.vy = 0;
+        a.wait = 0.6 + (i % 4) * 0.4;
+        a.phase = i;
+      }
+      a.phase += dt * 1.3;
+      if (a.wait > 0) {
+        a.wait -= dt;
+        a.x += Math.sin(a.phase) * 0.004 * dt;
+      } else {
+        a.vy += dt * 0.05;
+        if (a.vy > 0.11) a.vy = 0.11;
+        a.y += a.vy * dt;
+        a.x += Math.sin(a.phase) * 0.035 * dt;
+        a.tick -= dt;
+        if (a.tick <= 0) {
+          a.tick = 0.14;
+          var spot = a.trails[a.trailN % a.trails.length];
+          spot.x = a.x;
+          spot.y = a.y - 0.01;
+          spot.life = 1;
+          a.trailN++;
+        }
+      }
+      if (a.x < -0.02) a.x += 1;
+      if (a.x > 1.02) a.x -= 1;
+      if (a.y > 1.04) {
+        a.y = -0.04;
+        a.vy = 0;
+        a.wait = 0.8 + (i % 3) * 0.5;
+        a.r = 4 + (i % 3);
+      }
+      for (j = 0; j < a.trails.length; j++) if (a.trails[j].life > 0) a.trails[j].life -= dt * 0.35;
+    }
+    for (i = 0; i < slideN; i++) {
+      a = slides[i];
+      if (!a.on) continue;
+      for (j = i + 1; j < slideN; j++) {
+        b = slides[j];
+        if (!b.on) continue;
+        dx = a.x - b.x;
+        dy = a.y - b.y;
+        if (dx * dx + dy * dy > 0.0016) continue;
+        if (a.y >= b.y) { a.r = Math.min(9, a.r + 1); b.y = -0.05; b.vy = 0; b.wait = 1.2; }
+        else { b.r = Math.min(9, b.r + 1); a.y = -0.05; a.vy = 0; a.wait = 1.2; }
+      }
+    }
+  }
+
+  function paintDropMap() {
+    ensureDropSim();
+    var i, a, j, spot;
+    dropCtx.clearRect(0, 0, DROP_W, DROP_H);
+    for (i = 0; i < stills.length; i++) {
+      a = stills[i];
+      if (!a.on) continue;
+      dropCtx.drawImage(dropStampImg, a.x * DROP_W - a.r, a.y * DROP_H - a.r, a.r * 2, a.r * 2);
+    }
+    for (i = 0; i < slides.length; i++) {
+      a = slides[i];
+      if (!a.on) continue;
+      for (j = 0; j < a.trails.length; j++) {
+        spot = a.trails[j];
+        if (spot.life <= 0.05) continue;
+        dropCtx.globalAlpha = spot.life * 0.65;
+        dropCtx.drawImage(dropStampImg, spot.x * DROP_W - 2, spot.y * DROP_H - 2, 4, 4);
+      }
+      dropCtx.globalAlpha = 1;
+      dropCtx.drawImage(dropStampImg, a.x * DROP_W - a.r, a.y * DROP_H - a.r, a.r * 2, a.r * 2);
+    }
+  }
+
   function drawBeads() {
-    var n = glassCount(), i, b, sy, rad, qw, qh, qx, qy;
-    if (!n || !dropProg || !blurTex || !spriteTex || !dropLocs) return;
+    if (!dropProg || !blurTex || !dropTex || !glassCount()) return;
+    var t0 = Date.now();
+    paintDropMap();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, dropTex.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, dropCanvas);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    if (typeof Pace !== 'undefined') Pace.note('drop-upload', Date.now() - t0);
     gl.useProgram(dropProg);
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
     gl.enableVertexAttribArray(dropLocs.a);
@@ -862,21 +988,13 @@ var LiveWeather = (function () {
     gl.bindTexture(gl.TEXTURE_2D, blurTex.tex);
     gl.uniform1i(dropLocs.bg, 0);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, spriteTex);
-    gl.uniform1i(dropLocs.sprite, 1);
+    gl.bindTexture(gl.TEXTURE_2D, dropTex.tex);
+    gl.uniform1i(dropLocs.drops, 1);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.disable(gl.BLEND);
     gl.activeTexture(gl.TEXTURE0);
-    for (i = 0; i < n; i++) {
-      b = beads[i];
-      if (!b.on) continue;
-      sy = 1 - b.y;
-      rad = b.r;
-      qw = rad * 2.4;
-      qh = rad * 2.4 + (b.trail > 0.01 ? b.trail : 0);
-      qx = b.x - qw * 0.5;
-      qy = sy - rad * 1.2;
-      gl.uniform4f(dropLocs.rect, qx, qy, qw, qh);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
   }
 
   function drawGL(sec) {
@@ -1029,7 +1147,7 @@ var LiveWeather = (function () {
     }
     noteGap(frameLast ? now - frameLast : 34);
     var sec = stepClock(now);
-    stepBeads(lastDt);
+    stepGlass(lastDt);
     var wall = Date.now();
     if (scene.kind === 'storm') {
       if (nextBolt < 0) nextBolt = now + 2200 + Math.random() * 4000;
@@ -1058,11 +1176,12 @@ var LiveWeather = (function () {
     else if (ctx) draw2d(sec);
     drawn++;
     drawnAt = now;
-    if (boltCtx) {
+    if (boltCtx && boltLife > 0) {
+      drawBolt2d();
+      boltSeen = true;
+    } else if (boltSeen && boltCtx) {
       boltCtx.clearRect(0, 0, boltCanvas.width, boltCanvas.height);
-      if (boltLife > 0) { drawBolt2d(true); boltSeen = true; }
-      else boltSeen = false;
-      paintBeadsBolt();
+      boltSeen = false;
     }
     schedule(frame);
   }

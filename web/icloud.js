@@ -106,6 +106,34 @@ var ICloud = (function () {
    * Keys are Apple's rendition ids, not pixel sizes: width and height are the fields that count.
    * Returns {checksum, width, height} or null.
    */
+  /**
+   * A size for the screen, not the original. The smallest rendition that covers `target`, unless that jump is more
+   * than about twice `target` and a smaller rendition exists: a 4K original takes more than a second to decode on
+   * a 2021 Samsung, so the banner would rather use the thumbnail.
+   */
+  function pickCover(derivatives, target) {
+    if (!derivatives) return null;
+    target = target > 0 ? target : 1000;
+    var over = null, overEdge = 0, under = null, underEdge = 0, key, d, edge;
+    for (key in derivatives) {
+      if (!derivatives.hasOwnProperty(key) || key === 'PosterFrame') continue;
+      d = derivatives[key];
+      if (!d || !d.checksum) continue;
+      edge = Math.max(num(d.width), num(d.height));
+      if (!edge) continue;
+      if (edge >= target && (!over || edge < overEdge)) { over = d; overEdge = edge; }
+      if (edge < target && edge > underEdge) { under = d; underEdge = edge; }
+    }
+    d = (over && overEdge <= target * 2.2) ? over : (under || over);
+    if (!d) return null;
+    return {checksum: String(d.checksum), width: num(d.width), height: num(d.height)};
+  }
+
+  /**
+   * The smallest derivative whose long edge still covers `target` pixels, else the largest.
+   * Keys are Apple's rendition ids, not pixel sizes: width and height are the fields that count.
+   * Returns {checksum, width, height} or null.
+   */
   function pickDerivative(derivatives, target) {
     if (!derivatives) return null;
     target = target > 0 ? target : 1920;
@@ -132,10 +160,15 @@ var ICloud = (function () {
       p = list[i];
       if (!p || p.mediaAssetType === 'video') continue;
       d = pickDerivative(p.derivatives, target);
-      var homeD = pickDerivative(p.derivatives, 640);
+      var homeD = pickCover(p.derivatives, 1000);
+      var tinyD = pickCover(p.derivatives, 180);
       if (!d || !p.photoGuid) continue;
       out.push({id: String(p.photoGuid), checksum: d.checksum,
-        homeChecksum: homeD && homeD.checksum !== d.checksum ? homeD.checksum : '',
+        homeChecksum: homeD ? homeD.checksum : '',
+        homeEdge: homeD ? Math.max(homeD.width, homeD.height) : 0,
+        tinyChecksum: tinyD ? tinyD.checksum : '',
+        tinyEdge: tinyD ? Math.max(tinyD.width, tinyD.height) : 0,
+        edge: Math.max(d.width, d.height),
         w: d.width, h: d.height,
         date: String(p.dateCreated || p.batchDateCreated || ''),
         caption: String(p.caption || '').replace(/^\s+|\s+$/g, '')});
@@ -256,7 +289,7 @@ var ICloud = (function () {
       bestEdge = 0;
       fallback = null;
       fallbackEdge = 0;
-      var homeBest = null, homeEdge = 0;
+      var choices = [];
       for (key in fields) {
         if (!fields.hasOwnProperty(key)) continue;
         if (key.indexOf('res') !== 0 || key.indexOf('Res') !== key.length - 3) continue;
@@ -273,16 +306,31 @@ var ICloud = (function () {
         url = String(url).replace(/\$\{f\}/g, 'photo.jpg');
         var choice = {url: url, w: width, h: height, edge: edge};
         if (edge >= target && (!best || edge < bestEdge)) { best = choice; bestEdge = edge; }
-        if (edge >= 640 && (!homeBest || edge < homeEdge)) { homeBest = choice; homeEdge = edge; }
         if (!fallback || edge > fallbackEdge) { fallback = choice; fallbackEdge = edge; }
+        choices.push(choice);
       }
       choice = best || fallback;
       if (!choice) continue;
+      function nearEdge(want) {
+        var over = null, under = null, n, c;
+        for (n = 0; n < choices.length; n++) {
+          c = choices[n];
+          if (c.edge >= want && (!over || c.edge < over.edge)) over = c;
+          if (c.edge < want && (!under || c.edge > under.edge)) under = c;
+        }
+        if (over && over.edge <= want * 2.2) return over;
+        return under || over;
+      }
+      var homeChoice = nearEdge(1000), tinyChoice = nearEdge(180);
       note = notes[String(rec.recordName || '')] || {};
       if (!note.date) note.date = ckDate(fields);
       if (!note.caption) note.caption = ckCaption(fields);
       out.push({id: String(rec.recordName || i), url: choice.url,
-        home: homeBest && homeBest.url !== choice.url ? homeBest.url : '',
+        home: homeChoice ? homeChoice.url : '',
+        homeEdge: homeChoice ? homeChoice.edge : 0,
+        tiny: tinyChoice ? tinyChoice.url : '',
+        tinyEdge: tinyChoice ? tinyChoice.edge : 0,
+        edge: choice.edge,
         w: choice.w, h: choice.h,
         date: note.date || '', caption: note.caption || '', exp: Date.now() + 12 * 3600000});
     }
@@ -343,6 +391,10 @@ var ICloud = (function () {
       if (photos[i].homeChecksum) {
         var homeUrl = urls[photos[i].homeChecksum];
         if (homeUrl && homeUrl.url) photos[i].home = homeUrl.url;
+      }
+      if (photos[i].tinyChecksum) {
+        var tinyUrl = urls[photos[i].tinyChecksum];
+        if (tinyUrl && tinyUrl.url) photos[i].tiny = tinyUrl.url;
       }
       out.push(photos[i]);
     }
@@ -657,6 +709,7 @@ var ICloud = (function () {
     allowedHost: allowedHost,
     allowedUrl: allowedUrl,
     pickDerivative: pickDerivative,
+    pickCover: pickCover,
     photosFromStream: photosFromStream,
     photosFromCloudKit: photosFromCloudKit,
     assetUrls: assetUrls,

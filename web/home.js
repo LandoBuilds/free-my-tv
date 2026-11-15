@@ -622,7 +622,104 @@
   function photoSrc(photo, full) {
     if (!photo) return '';
     if (full) return photo.url || photo.home || '';
-    return photo.home || photo.url || '';
+    return sizedPhoto(photo, 960);
+  }
+
+  /** The picture address for this use. A file much larger than the screen goes through the bridge, which resizes it. */
+  function sizedPhoto(photo, edge) {
+    if (!photo) return '';
+    var direct, have;
+    if (edge <= 220) {
+      direct = photo.tiny || photo.home || photo.url || '';
+      have = photo.tinyEdge || photo.homeEdge || photo.edge || 0;
+    } else if (edge <= 1200) {
+      direct = photo.home || photo.tiny || photo.url || '';
+      have = photo.homeEdge || photo.tinyEdge || photo.edge || 0;
+    } else {
+      direct = photo.url || photo.home || '';
+      have = photo.edge || 0;
+    }
+    if (!direct) return '';
+    if (have && have <= edge * 1.35) return direct;
+    if (typeof Prefs === 'undefined' || !Prefs.wizUrl) return direct;
+    var root = String(Prefs.wizUrl() || '').replace(/\/+$/, '');
+    if (!root) return direct;
+    return root + '/photo?u=' + encodeURIComponent(direct) + '&w=' + edge;
+  }
+
+  var photoReady = {}, photoWait = {}, decodeBusy = false, decodeQueue = [];
+
+  function warmPhoto(photo, edge, done) {
+    var shown = sizedPhoto(photo, edge);
+    var direct = (edge <= 220 ? (photo && (photo.tiny || photo.home || photo.url)) : (photo && (photo.home || photo.url))) || '';
+    if (!shown) { if (done) done(null); return; }
+    if (photoReady[shown]) { if (done) done(photoReady[shown]); return; }
+    var job = {shown: shown, direct: direct, edge: edge, photo: photo, done: done ? [done] : []};
+    var i;
+    for (i = 0; i < decodeQueue.length; i++) if (decodeQueue[i].shown === shown) {
+      if (done) decodeQueue[i].done.push(done);
+      return;
+    }
+    if (photoWait[shown]) { if (done) photoWait[shown].push(done); return; }
+    decodeQueue.push(job);
+    pumpDecode();
+  }
+
+  function pumpDecode() {
+    if (decodeBusy || !decodeQueue.length) return;
+    decodeBusy = true;
+    var job = decodeQueue.shift();
+    photoWait[job.shown] = job.done;
+    loadPhoto(job.shown, job.direct !== job.shown ? job.direct : '', job, function (slot) {
+      var waiters = photoWait[job.shown] || [];
+      photoWait[job.shown] = null;
+      if (slot) photoReady[job.shown] = slot;
+      var n;
+      for (n = 0; n < waiters.length; n++) waiters[n](slot);
+      decodeBusy = false;
+      setTimeout(pumpDecode, 250);
+    });
+  }
+
+  function loadPhoto(shown, fallback, job, done) {
+    function giveUp() { done(null); }
+    function take(img) {
+      var edge = job.edge, photo = job.photo;
+      var dw = edge <= 220 ? 96 : paneWidth(photo.w || img.width, photo.h || img.height);
+      var dh = edge <= 220 ? 54 : 352;
+      var c = document.createElement('canvas');
+      drawContain(c, img, dw, dh);
+      releaseImage(img);
+      done({canvas: c, url: shown});
+    }
+    function fromUrl(url, again) {
+      if (url.indexOf('/photo?') >= 0) {
+        var x = new XMLHttpRequest();
+        var t0 = Date.now();
+        x.open('GET', url, true);
+        x.responseType = 'blob';
+        x.timeout = 12000;
+        var key = (typeof Prefs !== 'undefined' && Prefs.wizToken) ? Prefs.wizToken() : '';
+        try { if (key) x.setRequestHeader('X-Bridge-Token', key); } catch (e0) {}
+        x.onload = function () {
+          if (typeof Pace !== 'undefined') Pace.note('photo-fetch', Date.now() - t0);
+          if (x.status !== 200 || !x.response) { if (again) fromUrl(again, ''); else giveUp(); return; }
+          var img = borrowImage();
+          var obj = (window.URL || window.webkitURL).createObjectURL(x.response);
+          img.onerror = function () { releaseImage(img); if (again) fromUrl(again, ''); else giveUp(); };
+          img.src = obj;
+          afterDecode(img, function () { take(img); });
+        };
+        x.onerror = x.ontimeout = function () { if (again) fromUrl(again, ''); else giveUp(); };
+        x.send();
+        return;
+      }
+      var img2 = borrowImage();
+      img2.onerror = function () { releaseImage(img2); if (again) fromUrl(again, ''); else giveUp(); };
+      img2.src = url;
+      afterDecode(img2, function () { take(img2); });
+    }
+    fromUrl(shown, fallback);
   }
 
   var bgUrl = null, bgFront = 'bgA';
@@ -679,7 +776,10 @@
       if (!list.length) { stopAlbumBackground(); return; }
       var photo = list[homeIndex % list.length];
       homeIndex++;
-      backdrop(photoSrc(photo, false), Prefs.icloudFit());
+      warmPhoto(photo, 180, function (slot) {
+        if (!slot || !Prefs.icloudHome()) return;
+        showReadyBackdrop(slot.canvas, Prefs.icloudFit());
+      });
       // The home screen turns more slowly than the screensaver: at least 15 seconds, so the shelf stays easy to read.
       homeTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 15) * 1000);
     }
@@ -698,7 +798,9 @@
     var list = ICloud.playlist();
     if (!list.length) return;
     bgUrl = '';
-    backdrop(photoSrc(list[(homeIndex + list.length - 1) % list.length], false), Prefs.icloudFit());
+    warmPhoto(list[(homeIndex + list.length - 1) % list.length], 180, function (slot) {
+      if (slot) showReadyBackdrop(slot.canvas, Prefs.icloudFit());
+    });
   }
 
   // As HomeView's bgFollow: the background follows the focused pick.
@@ -2547,6 +2649,47 @@
     updateFocus();
   }
 
+  function showReadyBackdrop(src, fit) {
+    var key = 'ready';
+    bgUrl = key;
+    var next = bgFront === 'bgA' ? 'bgB' : 'bgA';
+    var canvas = $(next), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+    var t0 = Date.now();
+    var iw = src.width || 1, ih = src.height || 1;
+    var scale = fit ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+    var dw = iw * scale, dh = ih * scale;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(src, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    if (typeof Pace !== 'undefined') Pace.note('photo-blit', Date.now() - t0);
+    setClass(canvas, 'on', true);
+    setClass($(bgFront), 'on', false);
+    bgFront = next;
+    sampleTint(canvas);
+  }
+
+  function paintReadyBanner(box, photo, slot) {
+    bannerNodes(box);
+    showBannerText(box, photo);
+    var shots = box.querySelectorAll('.shot');
+    if (!shots || shots.length < 2 || !slot || !slot.canvas) return;
+    var back = shots[0].className.indexOf('on') >= 0 ? shots[1] : shots[0];
+    var front = back === shots[0] ? shots[1] : shots[0];
+    var t0 = Date.now();
+    var ctx = back.getContext('2d');
+    if (!ctx) return;
+    if (back.width !== slot.canvas.width || back.height !== slot.canvas.height) {
+      back.width = slot.canvas.width;
+      back.height = slot.canvas.height;
+    }
+    ctx.drawImage(slot.canvas, 0, 0);
+    if (typeof Pace !== 'undefined') Pace.note('photo-blit', Date.now() - t0);
+    var info = box.querySelector('.info');
+    if (info) info.style.width = slot.canvas.width + 'px';
+    setClass(back, 'on', true);
+    setClass(front, 'on', false);
+  }
+
   function startHomePhotos() {
     if (homePhotoTimer) return;
     function step() {
@@ -2555,16 +2698,23 @@
       if (!list.length) {
         box.innerHTML = '';
         box.textContent = tr('No album yet');
-      } else {
-        var photo = list[homePhotoAt % list.length];
-        homePhotoAt++;
-        shownPhoto = photoSrc(photo, false);
-        reportStatus();
-        paintBanner(box, photo);
-        var nxt = list[homePhotoAt % list.length];
-        if (nxt && nxt !== photo) preloadBanner(nxt);
+        homePhotoTimer = setTimeout(step, 2000);
+        return;
       }
+      var photo = list[homePhotoAt % list.length];
+      var src = sizedPhoto(photo, 960);
+      if (!photoReady[src]) {
+        warmPhoto(photo, 960);
+        homePhotoTimer = setTimeout(step, 300);
+        return;
+      }
+      homePhotoAt++;
+      shownPhoto = src;
+      reportStatus();
+      paintReadyBanner(box, photo, photoReady[src]);
+      var nxt = list[homePhotoAt % list.length];
       homePhotoTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 8) * 1000);
+      setTimeout(function () { if (nxt) warmPhoto(nxt, 960); }, 800);
     }
     step();
   }

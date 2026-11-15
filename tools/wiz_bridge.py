@@ -3,6 +3,8 @@
 
 The TV cannot send UDP, so this speaks WiZ (UDP 38899, setPilot) and, if samsungtvws is
 installed, the TV's own remote port (8002). The phone page and the TV talk to it over HTTP.
+`GET /photo?u=<https url>&w=<pixels>` resizes an iCloud picture on this Mac so the TV does not
+decode the original. Pillow is used when it is installed; otherwise macOS `sips`.
 
     python3 tools/wiz_bridge.py
     python3 tools/wiz_bridge.py --install-login --tv 192.168.86.69
@@ -11,6 +13,8 @@ Bulbs live in ~/.wiz/bulbs.txt, one "IP MAC" pair per line. A line "group Living
 bulbs that follow, until the next group. A token in ~/.wiz/token (or WIZ_TOKEN) is required
 from anywhere except this computer. The token is never printed.
 """
+import hashlib
+import io
 import json
 import os
 import re
@@ -210,6 +214,80 @@ def wake_on_lan(mac, ip):
             time.sleep(0.15)
     finally:
         sock.close()
+
+
+PHOTO_CACHE = os.path.join(HOME, '.freemytv-bridge', 'photo-cache')
+
+
+def photo_host_ok(url):
+    parsed = urlparse(url)
+    if parsed.scheme != 'https':
+        return False
+    host = (parsed.hostname or '').lower()
+    if not host or ':' in host:
+        return False
+    if host.replace('.', '').isdigit():
+        return False
+    allowed = ('icloud.com', 'icloud-content.com', 'apple.com', 'mzstatic.com', 'cdn-apple.com')
+    return any(host == name or host.endswith('.' + name) for name in allowed)
+
+
+def resize_photo(data, width):
+    try:
+        from PIL import Image
+        image = Image.open(io.BytesIO(data))
+        image = image.convert('RGB')
+        w, h = image.size
+        if w > width and w > 0:
+            image = image.resize((width, max(1, int(round(h * width / float(w))))), getattr(Image, 'LANCZOS', Image.BICUBIC))
+        out = io.BytesIO()
+        image.save(out, 'JPEG', quality=80)
+        return out.getvalue()
+    except Exception:
+        pass
+    try:
+        import tempfile
+        folder = tempfile.mkdtemp(prefix='fmtv-photo-')
+        src = os.path.join(folder, 'in')
+        dst = os.path.join(folder, 'out.jpg')
+        with open(src, 'wb') as handle:
+            handle.write(data)
+        subprocess.check_call(['sips', '-Z', str(width), '-s', 'format', 'jpeg', src, '--out', dst],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with open(dst, 'rb') as handle:
+            return handle.read()
+    except Exception:
+        return None
+
+
+def cached_photo(url, width):
+    width = max(64, min(1280, int(width)))
+    key = hashlib.sha256(('%s|%s' % (width, url)).encode('utf-8')).hexdigest()
+    os.makedirs(PHOTO_CACHE, exist_ok=True)
+    path = os.path.join(PHOTO_CACHE, key + '.jpg')
+    try:
+        if os.path.getsize(path) > 0 and time.time() - os.path.getmtime(path) < 30 * 60:
+            with open(path, 'rb') as handle:
+                return handle.read()
+    except OSError:
+        pass
+    if not photo_host_ok(url):
+        return None
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'FreeMyTV'})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = resp.read(12 * 1024 * 1024)
+    except Exception:
+        return None
+    jpeg = resize_photo(data, width)
+    if not jpeg:
+        return None
+    try:
+        with open(path, 'wb') as handle:
+            handle.write(jpeg)
+    except OSError:
+        pass
+    return jpeg
 
 
 def port_open(ip, port, timeout=0.4):
@@ -513,6 +591,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, radar_sample((qs.get('lat') or [''])[0], (qs.get('lon') or [''])[0]))
             except Exception:
                 self._json(502, {'dbz': None, 'intensity': 'none', 'frameTime': 0})
+            return
+        if path == '/photo':
+            qs = parse_qs(urlparse(self.path).query)
+            url = (qs.get('u') or [''])[0]
+            try:
+                width = int((qs.get('w') or ['960'])[0])
+            except ValueError:
+                width = 960
+            jpeg = cached_photo(url, width)
+            if not jpeg:
+                self._json(502, {'error': 'photo'})
+                return
+            self.send_response(200)
+            self._cors()
+            self.send_header('Content-Type', 'image/jpeg')
+            self.send_header('Content-Length', str(len(jpeg)))
+            self.end_headers()
+            self.wfile.write(jpeg)
             return
         self._json(404, {})
 

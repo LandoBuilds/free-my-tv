@@ -82,6 +82,9 @@ expect(ICloud.pickDerivative(derivatives, 3840), {checksum: 'big', width: 4032, 
 expect(ICloud.pickDerivative({'2053': deriv(640, 480, 'small')}, 1920), {checksum: 'small', width: 640, height: 480}, 'nothing big enough: the largest');
 expect(ICloud.pickDerivative({'PosterFrame': deriv(1920, 1080, 'poster')}, 1920), null, 'a poster frame is not a photo derivative');
 expect(ICloud.pickDerivative(null, 1920), null, 'no derivatives');
+expect(ICloud.pickCover(derivatives, 1000).checksum, 'med', 'a banner uses the rendition near 1000, not the 4K original');
+expect(ICloud.pickCover({'2053': deriv(640, 480, 'small'), '2057': deriv(4032, 3024, 'big')}, 1000).checksum, 'small', 'a 4K jump is refused when a smaller rendition exists');
+expect(ICloud.pickCover({'2057': deriv(4032, 3024, 'big')}, 1000).checksum, 'big', 'only the original: that is what is left');
 
 var stream = {streamName: 'Holiday', photos: [
   {photoGuid: 'p1', dateCreated: '2024-01-02T00:00:00Z', caption: '  On the lake  ', derivatives: {'2049': deriv(2048, 1536, 'c1')}},
