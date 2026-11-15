@@ -649,18 +649,19 @@
 
   var photoReady = {}, photoWait = {}, decodeBusy = false, decodeQueue = [];
 
-  function warmPhoto(photo, edge, done) {
+  function warmPhoto(photo, edge, done, kind) {
     var shown = sizedPhoto(photo, edge);
+    var key = shown + (kind ? '|' + kind : '');
     var direct = (edge <= 220 ? (photo && (photo.tiny || photo.home || photo.url)) : (photo && (photo.home || photo.url))) || '';
     if (!shown) { if (done) done(null); return; }
-    if (photoReady[shown]) { if (done) done(photoReady[shown]); return; }
-    var job = {shown: shown, direct: direct, edge: edge, photo: photo, done: done ? [done] : []};
+    if (photoReady[key]) { if (done) done(photoReady[key]); return; }
+    var job = {shown: shown, key: key, direct: direct, edge: edge, photo: photo, kind: kind || '', done: done ? [done] : []};
     var i;
-    for (i = 0; i < decodeQueue.length; i++) if (decodeQueue[i].shown === shown) {
+    for (i = 0; i < decodeQueue.length; i++) if (decodeQueue[i].key === key) {
       if (done) decodeQueue[i].done.push(done);
       return;
     }
-    if (photoWait[shown]) { if (done) photoWait[shown].push(done); return; }
+    if (photoWait[key]) { if (done) photoWait[key].push(done); return; }
     decodeQueue.push(job);
     pumpDecode();
   }
@@ -669,11 +670,11 @@
     if (decodeBusy || !decodeQueue.length) return;
     decodeBusy = true;
     var job = decodeQueue.shift();
-    photoWait[job.shown] = job.done;
+    photoWait[job.key] = job.done;
     loadPhoto(job.shown, job.direct !== job.shown ? job.direct : '', job, function (slot) {
-      var waiters = photoWait[job.shown] || [];
-      photoWait[job.shown] = null;
-      if (slot) photoReady[job.shown] = slot;
+      var waiters = photoWait[job.key] || [];
+      photoWait[job.key] = null;
+      if (slot) photoReady[job.key] = slot;
       var n;
       for (n = 0; n < waiters.length; n++) waiters[n](slot);
       decodeBusy = false;
@@ -685,8 +686,8 @@
     function giveUp() { done(null); }
     function take(img) {
       var edge = job.edge, photo = job.photo;
-      var dw = edge <= 220 ? 96 : paneWidth(photo.w || img.width, photo.h || img.height);
-      var dh = edge <= 220 ? 54 : 472;
+      var dw = job.kind === 'bg' ? 640 : paneWidth(photo.w || img.width, photo.h || img.height);
+      var dh = job.kind === 'bg' ? 360 : 472;
       var c = document.createElement('canvas');
       drawContain(c, img, dw, dh);
       releaseImage(img);
@@ -725,7 +726,7 @@
   var bgUrl = null, bgFront = 'bgA';
 
   /**
-   * The focused pick's photo as the background: drawn tiny and stretched, it's already as soft as a heavy blur.
+   * The focused pick's photo as the background, drawn at 640×360 so the full-screen scale stays soft without turning into blobs.
    * `fit` is the album's framing (fill or the whole photo). Without it the picks draw as they always have.
    */
   function backdrop(url, fit) {
@@ -776,10 +777,10 @@
       if (!list.length) { stopAlbumBackground(); return; }
       var photo = list[homeIndex % list.length];
       homeIndex++;
-      warmPhoto(photo, 180, function (slot) {
+      warmPhoto(photo, 640, function (slot) {
         if (!slot || !Prefs.icloudHome()) return;
         showReadyBackdrop(slot.canvas, Prefs.icloudFit());
-      });
+      }, 'bg');
       // The home screen turns more slowly than the screensaver: at least 15 seconds, so the shelf stays easy to read.
       homeTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 15) * 1000);
     }
@@ -798,9 +799,9 @@
     var list = ICloud.playlist();
     if (!list.length) return;
     bgUrl = '';
-    warmPhoto(list[(homeIndex + list.length - 1) % list.length], 180, function (slot) {
+    warmPhoto(list[(homeIndex + list.length - 1) % list.length], 640, function (slot) {
       if (slot) showReadyBackdrop(slot.canvas, Prefs.icloudFit());
-    });
+    }, 'bg');
   }
 
   // As HomeView's bgFollow: the background follows the focused pick.
@@ -2605,17 +2606,17 @@
       setClass(body, 'weather-home', false);
       return;
     }
-    var row = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
+    var feature = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
     if (full) LiveWeather.setMode('full', Prefs.liveQuality());
     else if (saverOn && (Prefs.livePhotos() || ambientGlass)) LiveWeather.setMode('glass', Prefs.liveQuality());
-    else if (row) LiveWeather.setMode('row', Prefs.liveQuality());
-    else if (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome()) LiveWeather.setMode('overlay', Prefs.liveQuality());
+    else if (feature || (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome())) LiveWeather.setMode('overlay', Prefs.liveQuality());
     else LiveWeather.setMode('off');
     pushScene();
-    setClass(body, 'weather-home', LiveWeather.mode() === 'overlay');
-    setClass($('liveinfo'), 'on', full || row);
-    setClass($('liveinfo'), 'tucked', row);
-    if (full || over || row) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
+    setClass(body, 'weather-home', LiveWeather.mode() === 'overlay' || feature);
+    setClass($('liveinfo'), 'on', full || feature);
+    setClass($('liveinfo'), 'plain', feature);
+    setClass($('liveinfo'), 'tucked', false);
+    if (full || over || feature) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
     reportStatus();
   }
 
@@ -2634,6 +2635,18 @@
     var alert = LiveWeather.alert();
     if (alert) el('div', 'alert', box, alert);
     if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
+    if (!saverOn && Prefs.homeShow() === 'weather') {
+      var daily = Data.forecast() === 'days' && w.days && w.days.length;
+      var src = daily ? w.days : w.hours;
+      if (src && src.length) {
+        var strip = el('div', 'hours', box), n = Math.min(5, src.length), i, cell;
+        for (i = 0; i < n; i++) {
+          cell = el('div', 'hour', strip);
+          el('span', 't', cell, daily ? Data.weekday(src[i].at) : Data.hour(src[i].at));
+          el('span', 'n', cell, Data.degrees(daily ? src[i].max : src[i].temp));
+        }
+      }
+    }
   }
 
   var homePhotoTimer = 0, homePhotoAt = 0, bannerGen = 0, bannerReady = null;

@@ -60,7 +60,7 @@ var LiveWeather = (function () {
     'float hash(vec2 p){',
     '  p = fract(p * vec2(0.1031, 0.1030));',
     '  p += dot(p, p.yx + 19.19);',
-    '  return fract(p.x * p.y);',
+    '  return fract(p.x * p.y * 0.0009765625);',
     '}',
     'float noise(vec2 p){',
     '  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);',
@@ -227,6 +227,7 @@ var LiveWeather = (function () {
     'precision mediump float;',
     'uniform sampler2D uBg;',
     'uniform sampler2D uDrops;',
+    'uniform float uReady;',
     'varying vec2 vUv;',
     'void main(){',
     '  vec2 px = vec2(0.003125, 0.005556);',
@@ -235,11 +236,14 @@ var LiveWeather = (function () {
     '  float hy = texture2D(uDrops, vUv + vec2(0.0, px.y)).a;',
     '  vec2 refr = vec2(hx - h, hy - h) * 0.9;',
     '  float cover = smoothstep(0.08, 0.28, h);',
-    '  vec3 bent = texture2D(uBg, clamp(vUv + refr, 0.0, 1.0)).rgb;',
-    '  vec3 water = vec3(0.78, 0.82, 0.86);',
-    '  vec3 col = mix(water, bent, 0.72);',
+    '  vec3 water = vec3(0.72, 0.78, 0.84);',
+    '  vec2 suv = clamp(vUv + refr, 0.03, 0.97);',
+    '  vec3 bent = texture2D(uBg, suv).rgb;',
+    '  float bad = step(0.22, bent.r - bent.g) * step(0.22, bent.b - bent.g);',
+    '  float useBg = step(0.5, uReady) * (1.0 - bad);',
+    '  vec3 col = mix(water, bent, useBg * 0.22);',
     '  float lip = smoothstep(0.2, 0.5, h) * (1.0 - smoothstep(0.62, 0.92, h));',
-    '  col += vec3(1.0, 1.0, 1.0) * lip * 0.12;',
+    '  col += vec3(1.0, 1.0, 1.0) * lip * 0.1;',
     '  gl_FragColor = vec4(col, cover);',
     '}'
   ].join('\n');
@@ -360,14 +364,25 @@ var LiveWeather = (function () {
     return p;
   }
 
-  function makeTarget(w, h) {
+  function makeTarget(w, h, fill) {
     var tex = gl.createTexture();
+    var data = new Uint8Array(w * h * 4), i, r, g, b, a;
+    r = fill ? fill[0] : 184;
+    g = fill ? fill[1] : 199;
+    b = fill ? fill[2] : 214;
+    a = fill ? fill[3] : 255;
+    for (i = 0; i < data.length; i += 4) {
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+      data[i + 3] = a;
+    }
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
     var fb = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
@@ -501,13 +516,14 @@ var LiveWeather = (function () {
           a: gl.getAttribLocation(dropProg, 'a'),
           bg: gl.getUniformLocation(dropProg, 'uBg'),
           drops: gl.getUniformLocation(dropProg, 'uDrops'),
+          ready: gl.getUniformLocation(dropProg, 'uReady'),
           rect: gl.getUniformLocation(dropProg, 'uRect')
         };
       }
       note('gl ready ' + spec.w + 'x' + spec.h);
     }
     if (!blurTex) blurTex = makeTarget(320, 180);
-    if (!dropTex) dropTex = makeTarget(320, 180);
+    if (!dropTex) dropTex = makeTarget(320, 180, [0, 0, 0, 0]);
     ensureDropSim();
     blurKey = '';
     return true;
@@ -976,7 +992,7 @@ var LiveWeather = (function () {
   }
 
   function drawBeads() {
-    if (!dropProg || !blurTex || !dropTex || !glassCount()) return;
+    if (!dropProg || !blurTex || !dropTex || !blurKey || !glassCount()) return;
     var t0 = Date.now();
     paintDropMap();
     gl.activeTexture(gl.TEXTURE1);
@@ -995,6 +1011,7 @@ var LiveWeather = (function () {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, dropTex.tex);
     gl.uniform1i(dropLocs.drops, 1);
+    if (dropLocs.ready) gl.uniform1f(dropLocs.ready, 1);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

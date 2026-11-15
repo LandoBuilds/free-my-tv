@@ -62,13 +62,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 #sky .grad { position: absolute; left: 0; top: 0; width: 100%; height: 100%; -webkit-transition: opacity 2s; transition: opacity 2s; }
 #sky .day { background: -webkit-linear-gradient(top, #F5F5F7, #E2E2E7); background: linear-gradient(#F5F5F7, #E2E2E7); }
 #sky .night { background: -webkit-linear-gradient(top, #1C1C1E, #0B0B0D); background: linear-gradient(#1C1C1E, #0B0B0D); opacity: 0; }
-#sky canvas { position: absolute; left: -4%; top: -4%; width: 108%; height: 108%; opacity: 0; -webkit-transition: opacity 0.8s; transition: opacity 0.8s; }
+#sky canvas { position: absolute; left: -1%; top: -1%; width: 102%; height: 102%; opacity: 0; -webkit-transition: opacity 0.8s; transition: opacity 0.8s; }
 #sky canvas.on { opacity: 1; }
-#sky .veil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: rgba(245, 245, 247, 0.74); -webkit-transition: background-color 2s; transition: background-color 2s; }
+#sky .veil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: rgba(245, 245, 247, 0.58); -webkit-transition: background-color 2s; transition: background-color 2s; }
 #sky .lift { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: #FFF; opacity: 0; -webkit-transition: opacity 0.45s, background-color 2s; transition: opacity 0.45s, background-color 2s; }
 .night #sky .day { opacity: 0; }
 .night #sky .night { opacity: 1; }
-.night #sky .veil { background: rgba(11, 11, 13, 0.78); }
+.night #sky .veil { background: rgba(11, 11, 13, 0.62); }
 .night #sky .lift { background: #000; }
 .drawer-open #sky .lift { opacity: 0.32; }
 .night.drawer-open #sky .lift { opacity: 0.42; }
@@ -78,9 +78,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* Each part is its own stack, so a focused tile (z-index) never shows over the drawer, a sheet or the screensaver. */
 #live { z-index: 1; pointer-events: none; visibility: hidden; }
 #live.on { visibility: visible; background-color: #10141c; opacity: 1; -webkit-transition: opacity 0.4s linear; transition: opacity 0.4s linear; }
-#live.full, #live.glass, #livebolt.full, #livebolt.glass { z-index: 5; }
-/* Home weather sits on the sky and under the shelf. Hiding the photo keeps a see-through canvas from leaving the poster up. */
-#live.overlay, #livebolt.overlay { z-index: 1; }
+#live.full, #live.glass, #livebolt.full, #livebolt.glass { z-index: 10; }
+/* Home weather is the full 16:9 canvas, the same shape as the screen, so the sky is not stretched. */
+#live.overlay, #livebolt.overlay { z-index: 1; left: 0; top: 0; width: 1920px; height: 1080px; border-radius: 0; }
 body.weather-home #sky { visibility: hidden; }
 /* Light type: the rain sky behind the header is dark, and the controls sit above that canvas. */
 body.weather-home #title,
@@ -151,16 +151,16 @@ body.weather-home #homephotos .ago { color: rgba(245, 245, 247, 0.72); }
 .rtl #homephotos .info { text-align: right; }
 body.content-photos #homephotos { visibility: visible; }
 body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
-.drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.tucked { opacity: 0; }
+.drawer-open #live.row, .drawer-open #livebolt.row, .drawer-open #homephotos, .drawer-open #liveinfo.plain { opacity: 0; }
 #home { z-index: 4; }
-#drawer { z-index: 2; }
-.sheet { z-index: 3; }
-#saver { z-index: 4; }
+#drawer { z-index: 6; }
+.sheet { z-index: 8; }
+#saver, #ambient { z-index: 9; }
 #liveinfo {
   position: absolute;
   left: 80px;
   bottom: 80px;
-  z-index: 6;
+  z-index: 11;
   visibility: hidden;
   padding: 22px 36px 26px;
   border-radius: 36px;
@@ -170,11 +170,24 @@ body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 #liveinfo.on { visibility: visible; }
-#liveinfo.tucked { left: 108px; top: auto; bottom: 400px; padding: 14px 26px 16px; border-radius: 28px; }
-#liveinfo.tucked .temp { font-size: 56px; }
-#liveinfo.tucked .cond { font-size: 24px; margin-top: 2px; }
-#liveinfo.tucked .meta { font-size: 18px; margin-top: 4px; }
-#liveinfo.tucked .alert { font-size: 18px; margin-top: 6px; }
+/* Home weather: the numbers sit in the open, where the banner was, with no frame. */
+#liveinfo.plain {
+  left: 88px;
+  top: 300px;
+  bottom: auto;
+  z-index: 5;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+#liveinfo.plain .temp { font-size: 108px; }
+#liveinfo.plain .cond { font-size: 36px; }
+#liveinfo.plain .meta { font-size: 26px; }
+#liveinfo.plain .hours { margin-top: 28px; }
+#liveinfo.plain .hour { display: inline-block; width: 120px; margin-right: 12px; vertical-align: top; }
+#liveinfo.plain .hour .t { display: block; font-size: 20px; color: rgba(255, 255, 255, 0.72); }
+#liveinfo.plain .hour .n { display: block; margin-top: 4px; font-size: 30px; font-weight: 500; }
 #liveinfo .temp { font-size: 92px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
 #liveinfo .cond { margin-top: 6px; font-size: 32px; font-weight: 500; }
 #liveinfo .meta { margin-top: 8px; font-size: 24px; color: rgba(255, 255, 255, 0.82); }
@@ -766,7 +779,7 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
 
 /* MARK: - Dim: a black layer over the picture, for a dark room (panel brightness needs private APIs) */
 
-#hud { position: absolute; left: 24px; top: 24px; z-index: 9; display: none; padding: 10px 14px; background: rgba(0, 0, 0, 0.78); color: #FFF; font: 22px/1.35 sans-serif; border-radius: 10px; }
+#hud { position: absolute; left: 24px; top: 24px; z-index: 12; display: none; padding: 10px 14px; background: rgba(0, 0, 0, 0.78); color: #FFF; font: 22px/1.35 sans-serif; border-radius: 10px; }
 #hud.on { display: block; }
 #dim.d1 { opacity: 0.28; }
 #dim.d2 { opacity: 0.42; }
@@ -774,7 +787,7 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
 
 /* MARK: - The clock screensaver: a large clock and the weather, drifting slowly for OLED panels */
 
-#ambient { z-index: 4; background: #050506; opacity: 0; visibility: hidden; -webkit-transition: opacity 1.1s, visibility 0s 1.1s; transition: opacity 1.1s, visibility 0s 1.1s; }
+#ambient { z-index: 9; background: #050506; opacity: 0; visibility: hidden; -webkit-transition: opacity 1.1s, visibility 0s 1.1s; transition: opacity 1.1s, visibility 0s 1.1s; }
 #ambient.on { opacity: 1; visibility: visible; -webkit-transition-delay: 0s; transition-delay: 0s; }
 #ambient .shift { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; -webkit-transition: -webkit-transform 9s linear; transition: transform 9s linear; }
 #ambient .clock { position: absolute; left: 96px; top: 238px; font-size: 232px; font-weight: 200; line-height: 0.96; letter-spacing: -0.025em; color: #F5F5F7; -webkit-font-feature-settings: 'tnum'; font-feature-settings: 'tnum'; }
