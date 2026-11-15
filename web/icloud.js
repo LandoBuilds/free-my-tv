@@ -134,7 +134,8 @@ var ICloud = (function () {
       d = pickDerivative(p.derivatives, target);
       if (!d || !p.photoGuid) continue;
       out.push({id: String(p.photoGuid), checksum: d.checksum, w: d.width, h: d.height,
-        date: String(p.dateCreated || p.batchDateCreated || '')});
+        date: String(p.dateCreated || p.batchDateCreated || ''),
+        caption: String(p.caption || '').replace(/^\s+|\s+$/g, '')});
     }
     return out;
   }
@@ -203,11 +204,44 @@ var ICloud = (function () {
    * A Live Photo keeps its still and drops the movie renditions. A video master is skipped.
    * ${f} in a download URL becomes a file name; Apple substitutes it the same way.
    */
+  function ckDate(fields) {
+    var names = ['assetDate', 'dateCreated', 'addedDate'], i, v, ms;
+    for (i = 0; i < names.length; i++) {
+      v = fieldValue(fields, names[i]);
+      if (typeof v === 'number' && v > 0) {
+        ms = v < 100000000000 ? v * 1000 : v;
+        try { return new Date(ms).toISOString(); } catch (e) { return ''; }
+      }
+      if (typeof v === 'string' && v) return v;
+    }
+    return '';
+  }
+
+  function ckCaption(fields) {
+    var v = fieldValue(fields, 'caption');
+    return v ? String(v).replace(/^\s+|\s+$/g, '') : '';
+  }
+
+  function masterId(fields) {
+    var ref = fieldValue(fields, 'masterRef');
+    if (!ref) return '';
+    if (typeof ref === 'string') return ref;
+    return ref.recordName ? String(ref.recordName) : '';
+  }
+
   function photosFromCloudKit(records, target) {
     var out = [], i, rec, fields, itemType, originalType, key, name, type, url, width, height, edge;
-    var best, bestEdge, fallback, fallbackEdge, dl;
+    var best, bestEdge, fallback, fallbackEdge, dl, notes = {}, note, id;
     if (!records || !records.length) return out;
     target = target > 0 ? target : 1920;
+    for (i = 0; i < records.length; i++) {
+      rec = records[i];
+      if (!rec || rec.recordType !== 'CPLAsset') continue;
+      fields = rec.fields || {};
+      id = masterId(fields);
+      if (!id) continue;
+      notes[id] = {date: ckDate(fields), caption: ckCaption(fields)};
+    }
     for (i = 0; i < records.length && out.length < MAX_PHOTOS; i++) {
       rec = records[i];
       if (!rec || rec.recordType !== 'CPLMaster') continue;
@@ -239,8 +273,11 @@ var ICloud = (function () {
       }
       choice = best || fallback;
       if (!choice) continue;
-      out.push({id: String(rec.recordName || i), url: choice.url, w: choice.w, h: choice.h, date: '',
-        exp: Date.now() + 12 * 3600000});
+      note = notes[String(rec.recordName || '')] || {};
+      if (!note.date) note.date = ckDate(fields);
+      if (!note.caption) note.caption = ckCaption(fields);
+      out.push({id: String(rec.recordName || i), url: choice.url, w: choice.w, h: choice.h,
+        date: note.date || '', caption: note.caption || '', exp: Date.now() + 12 * 3600000});
     }
     return out;
   }

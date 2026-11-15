@@ -84,7 +84,7 @@ expect(ICloud.pickDerivative({'PosterFrame': deriv(1920, 1080, 'poster')}, 1920)
 expect(ICloud.pickDerivative(null, 1920), null, 'no derivatives');
 
 var stream = {streamName: 'Holiday', photos: [
-  {photoGuid: 'p1', dateCreated: '2024-01-02T00:00:00Z', derivatives: {'2049': deriv(2048, 1536, 'c1')}},
+  {photoGuid: 'p1', dateCreated: '2024-01-02T00:00:00Z', caption: '  On the lake  ', derivatives: {'2049': deriv(2048, 1536, 'c1')}},
   {photoGuid: 'p2', mediaAssetType: 'video', dateCreated: '2024-01-03T00:00:00Z', derivatives: {'720p': deriv(1280, 720, 'vid'), PosterFrame: deriv(1920, 1080, 'poster')}},
   {photoGuid: 'p3', batchDateCreated: '2024-01-01T00:00:00Z', derivatives: {'2053': deriv(800, 600, 'c3')}},
   {photoGuid: '', derivatives: {'2049': deriv(2048, 1536, 'skip')}},
@@ -94,6 +94,8 @@ var photos = ICloud.photosFromStream(stream, 1920);
 expect(photos.map(function (p) { return p.id; }), ['p1', 'p3'], 'videos and empties are skipped');
 expect(photos[0].checksum, 'c1', 'first photo derivative');
 expect(photos[1].date, '2024-01-01T00:00:00Z', 'batch date when there is no dateCreated');
+expect(photos[0].caption, 'On the lake', 'a caption is kept, with the spaces trimmed');
+expect(photos[1].caption, '', 'no caption stays empty');
 
 var assets = ICloud.assetUrls({
   items: {
@@ -140,7 +142,11 @@ var records = [
     resVidSmallRes: {value: {downloadURL: 'https://cdn.example/live.mov'}},
     resVidSmallWidth: {value: 1280}, resVidSmallHeight: {value: 720}
   }},
-  {recordType: 'CPLAsset', recordName: 'asset', fields: {}},
+  {recordType: 'CPLAsset', recordName: 'asset', fields: {
+    masterRef: {value: {recordName: 'new'}},
+    caption: {value: 'March trip'},
+    assetDate: {value: Date.parse('2025-03-04T15:00:00Z')}
+  }},
   {recordType: 'CPLMaster', recordName: 'clip', fields: {
     itemType: {value: 'public.mpeg-4'},
     resVidMedRes: {value: {downloadURL: 'https://cdn.example/video'}},
@@ -152,6 +158,8 @@ expect(ck.length, 1, 'a video master is skipped and a Live Photo stays');
 expect(ck[0].id, 'new', 'the still master');
 expect(ck[0].url, 'https://cdn.example/medphoto.jpg', '1080p JPEG, with ${f} filled in');
 expect(ck[0].w, 2048, 'the chosen width');
+expect(ck[0].caption, 'March trip', 'the caption comes from the asset that points at the master');
+expect(ck[0].date, '2025-03-04T15:00:00.000Z', 'the asset date');
 expect(ICloud.photosFromCloudKit(records, 3840)[0].url, 'https://cdn.example/origphoto.jpg', '4K takes the original');
 
 // MARK: - The two requests, including a 330 and a batch of asset URLs

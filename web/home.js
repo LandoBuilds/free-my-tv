@@ -453,6 +453,7 @@
     focusRows($('albumpick'), st.album, st.zone === Z.ALBUM);
     focusRows($('textpick'), st.text, st.zone === Z.TEXT);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
+    if (typeof LiveWeather !== 'undefined' && LiveWeather.setPaused) LiveWeather.setPaused(st.zone === Z.DRAWER || sheetOpen());
     followSoon();
     reportStatus();
   }
@@ -677,17 +678,23 @@
     });
   }
 
+  var glanceKey = '';
+
   function renderGlance() {
     var g = $('glance');
     if (!g || typeof Glance === 'undefined') return;
+    var w = Data.weather, ev = Glance.event();
+    var wx = w ? Data.degrees(w.temp) + '  ·  ' + Data.condition(w.code, w.isDay) : '';
+    var line = ev ? formatDate('format|h:mm', ev.start) + '  ' + ev.title
+      : (Prefs.icalUrl() && Glance.eventProblem()) ? tr("Couldn't read the calendar")
+      : Prefs.icalUrl() ? tr('Nothing coming up') : '';
+    var key = formatDate('format|h:mm', Date.now()) + '|' + wx + '|' + line;
+    if (key === glanceKey && g.children.length) return;
+    glanceKey = key;
     g.innerHTML = '';
     el('div', 'when', g, formatDate('format|h:mm', Date.now()));
-    var w = Data.weather;
-    if (w) el('div', 'wx', g, Data.degrees(w.temp) + '  ·  ' + Data.condition(w.code, w.isDay));
-    var ev = Glance.event();
-    if (ev) el('div', 'ev', g, formatDate('format|h:mm', ev.start) + '  ' + ev.title);
-    else if (Prefs.icalUrl() && Glance.eventProblem()) el('div', 'ev', g, tr("Couldn't read the calendar"));
-    else if (Prefs.icalUrl()) el('div', 'ev', g, tr('Nothing coming up'));
+    if (wx) el('div', 'wx', g, wx);
+    if (line) el('div', 'ev', g, line);
   }
 
   function renderScenes() {
@@ -2304,8 +2311,6 @@
 
   function albumFrame(parent) {
     var photo = el('div', 'photo', parent);
-    el('div', 'matte', photo);
-    el('div', 'matteveil', photo);
     el('div', 'sharp', photo);
     return photo;
   }
@@ -2349,7 +2354,6 @@
       img.onload = function () {
         if (!saverOn || gen !== saverGen || !shown) return;
         skips = 0;
-        back.querySelector('.matte').style.backgroundImage = shown;
         sharp.style.backgroundImage = shown;
         sharp.style.webkitTransition = sharp.style.transition = 'none';
         sharp.style.webkitTransform = sharp.style.transform = ken ? albumKen(n, false) : 'scale(1)';
@@ -2484,7 +2488,7 @@
     if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
   }
 
-  var homePhotoTimer = 0, homePhotoAt = 0;
+  var homePhotoTimer = 0, homePhotoAt = 0, bannerGen = 0;
 
   function applyHomeContent() {
     var mode = Prefs.homeShow();
@@ -2510,24 +2514,123 @@
         homePhotoAt++;
         shownPhoto = photo.url || '';
         reportStatus();
-        paintFramed(box, cssUrl(photo.url));
+        paintBanner(box, photo);
       }
       homePhotoTimer = setTimeout(step, Math.max(Prefs.icloudInterval(), 8) * 1000);
     }
     step();
   }
 
-  /** The sharp photo, contained, over a blurred and darkened copy of the same picture. */
-  function paintFramed(box, shown) {
-    var matte = box.querySelector('.matte');
-    if (!matte) {
-      box.textContent = '';
-      matte = el('div', 'matte', box);
-      el('div', 'matteveil', box);
-      el('div', 'sharp', box);
+  /** Width of the photo pane: the banner height times the picture's shape, capped so the date still fits. */
+  function paneWidth(w, h) {
+    var ratio = w > 0 && h > 0 ? w / h : 1.5;
+    var width = Math.round(442 * ratio);
+    if (width > 980) width = 980;
+    if (width > 1760 - 480) width = 1760 - 480;
+    if (width < 220) width = 220;
+    return width;
+  }
+
+  function relativeAgo(ms) {
+    var span = Date.now() - ms;
+    if (span < 0) span = 0;
+    var days = Math.floor(span / 86400000);
+    if (days >= 365) return plural('plural|one:{n} year ago|other:{n} years ago', Math.floor(days / 365));
+    if (days >= 30) return plural('plural|one:{n} month ago|other:{n} months ago', Math.floor(days / 30));
+    if (days >= 1) return plural('plural|one:{n} day ago|other:{n} days ago', days);
+    var hours = Math.floor(span / 3600000);
+    if (hours >= 1) return trf('{n} h ago', {n: hours});
+    var mins = Math.floor(span / 60000);
+    if (mins >= 1) return trf('{n} min ago', {n: mins});
+    return '';
+  }
+
+  function bannerNodes(box) {
+    if (box.querySelector('.pane')) return;
+    box.textContent = '';
+    var pane = el('div', 'pane', box);
+    var a = el('canvas', 'shot', pane);
+    var b = el('canvas', 'shot', pane);
+    a.width = 8;
+    a.height = 8;
+    b.width = 8;
+    b.height = 8;
+    var info = el('div', 'info', box);
+    el('div', 'when', info);
+    el('div', 'ago', info);
+    el('div', 'cap', info);
+  }
+
+  function placeBanner(box, width) {
+    var pane = box.querySelector('.pane');
+    var info = box.querySelector('.info');
+    var rtl = body.className.indexOf('rtl') >= 0;
+    pane.style.width = width + 'px';
+    if (rtl) {
+      pane.style.left = 'auto';
+      pane.style.right = '0px';
+      info.style.left = '8px';
+      info.style.right = (width + 40) + 'px';
+    } else {
+      pane.style.right = 'auto';
+      pane.style.left = '0px';
+      info.style.right = '8px';
+      info.style.left = (width + 40) + 'px';
     }
-    matte.style.backgroundImage = shown || '';
-    box.querySelector('.sharp').style.backgroundImage = shown || '';
+  }
+
+  function showBannerText(box, photo) {
+    var when = box.querySelector('.when');
+    var ago = box.querySelector('.ago');
+    var cap = box.querySelector('.cap');
+    var ms = Date.parse(photo && photo.date || '');
+    if (ms) {
+      when.style.display = 'block';
+      when.textContent = formatDate('format|MMMM d, yyyy', ms);
+      var rel = relativeAgo(ms);
+      ago.style.display = rel ? 'block' : 'none';
+      ago.textContent = rel;
+    } else {
+      when.style.display = 'none';
+      when.textContent = '';
+      ago.style.display = 'none';
+      ago.textContent = '';
+    }
+    var caption = photo && photo.caption ? String(photo.caption) : '';
+    cap.style.display = caption ? 'block' : 'none';
+    cap.textContent = caption;
+  }
+
+  /** The whole photo, in a pane its own shape, with the date and caption beside it. */
+  function paintBanner(box, photo) {
+    bannerNodes(box);
+    var width = paneWidth(photo.w, photo.h);
+    placeBanner(box, width);
+    showBannerText(box, photo);
+    var shots = box.querySelectorAll('.shot');
+    var back = shots[0].className.indexOf('on') >= 0 ? shots[1] : shots[0];
+    var front = back === shots[0] ? shots[1] : shots[0];
+    var shown = photo.url || '';
+    if (!shown) return;
+    var mine = ++bannerGen;
+    var img = new Image();
+    img.onload = function () {
+      if (mine !== bannerGen || Prefs.homeShow() !== 'photos') return;
+      var ctx = back.getContext('2d');
+      if (!ctx) return;
+      back.width = width;
+      back.height = 442;
+      var iw = img.width || photo.w || 1, ih = img.height || photo.h || 1;
+      var scale = Math.min(width / iw, 442 / ih);
+      var dw = Math.round(iw * scale), dh = Math.round(ih * scale);
+      ctx.fillStyle = '#1c2430';
+      ctx.fillRect(0, 0, width, 442);
+      ctx.drawImage(img, Math.round((width - dw) / 2), Math.round((442 - dh) / 2), dw, dh);
+      setClass(back, 'on', true);
+      setClass(front, 'on', false);
+    };
+    img.onerror = function () { ICloud.noteBroken(); };
+    img.src = shown;
   }
 
   function stopHomePhotos() {

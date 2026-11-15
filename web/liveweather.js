@@ -220,7 +220,7 @@ var LiveWeather = (function () {
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
   var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
-  var skyAt = 0, lastSky = null, skyBusy = false;
+  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -622,10 +622,18 @@ var LiveWeather = (function () {
     }
   }
 
+  function schedule(fn) {
+    var again = window.requestAnimationFrame || function (cb) { return setTimeout(function () { cb(Date.now()); }, 32); };
+    again(fn);
+  }
+
   function frame(now) {
     if (!running || !canvas) return;
-    if (typeof document !== 'undefined' && document.hidden) { running = false; return; }
-    if (frameLast) {
+    if (paused || (typeof document !== 'undefined' && document.hidden)) { running = false; return; }
+    // Home weather is behind the shelf: 30 fps is enough, and it keeps the remote responsive.
+    var gap = (mode === 'overlay' || mode === 'row') ? 33 : 0;
+    if (gap && frameLast && now - frameLast < gap) { schedule(frame); return; }
+    if (frameLast && mode !== 'overlay' && mode !== 'row') {
       frameAcc += now - frameLast;
       frameN++;
       if (frameN >= 90) {
@@ -666,17 +674,21 @@ var LiveWeather = (function () {
     }
     if (gl && prog) drawGL(sec);
     else if (ctx) draw2d(sec);
-    if (bolt > 0 || (boltCtx && boltCanvas.width)) drawBolt2d();
-    var again = window.requestAnimationFrame || function (fn) { return setTimeout(function () { fn(Date.now()); }, 32); };
-    again(frame);
+    if (boltLife > 0) {
+      drawBolt2d();
+      boltSeen = true;
+    } else if (boltSeen && boltCtx) {
+      boltCtx.clearRect(0, 0, boltCanvas.width, boltCanvas.height);
+      boltSeen = false;
+    }
+    schedule(frame);
   }
 
   function loopStart() {
-    if (running) return;
+    if (running || paused) return;
     running = true;
     frameLast = 0;
-    var again = window.requestAnimationFrame || function (fn) { return setTimeout(function () { fn(Date.now()); }, 32); };
-    again(frame);
+    schedule(frame);
   }
 
   function setMode(next, q) {
@@ -689,7 +701,8 @@ var LiveWeather = (function () {
       return;
     }
     quality = q || quality || 'medium';
-    var use = forcedQ || quality;
+    // Behind the home screen the canvas stays small. The screensaver still uses the chosen detail.
+    var use = (next === 'overlay' || next === 'row') ? 'low' : (forcedQ || quality);
     if (!gl && !ctx) {
       if (!initGL(use) && !ctx) {
         try { ctx = canvas.getContext('2d'); } catch (e2) { ctx = null; }
@@ -1022,6 +1035,11 @@ var LiveWeather = (function () {
     night: night,
     moonPhase: moonPhase,
     boot: boot,
+    setPaused: function (on) {
+      paused = !!on;
+      if (paused) running = false;
+      else if (mode !== 'off') loopStart();
+    },
     setMode: setMode,
     mode: function () { return mode; },
     scene: function (next) { if (next) scene = next; return scene; },
