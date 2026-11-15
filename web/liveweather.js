@@ -4,7 +4,8 @@
  * is missing. The picture stays small (Medium is 960×540, scaled up) and, if frames start taking too long, the
  * quality drops by itself. Lightning is a branched bolt plus a flash that lights the clouds; thunder, if sound is
  * on, follows after a short random wait, the way a distant strike does.
- * Numbers come from the forecast the app already keeps. A US severe alert is read from api.weather.gov.
+ * Numbers come from the forecast the app already keeps. Radar (RainViewer) wins when it shows rain,
+ * then a fresh station observation, then the model. A US severe alert is read from api.weather.gov.
  */
 var LiveWeather = (function () {
   'use strict';
@@ -218,7 +219,8 @@ var LiveWeather = (function () {
   var target = null, mode = 'off', running = false, quality = 'medium', forcedQ = '';
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
-  var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertAt = 0;
+  var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
+  var skyAt = 0, lastSky = null, skyBusy = false;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -730,7 +732,7 @@ var LiveWeather = (function () {
       if (x.readyState !== 4 || over) return;
       over = true;
       if (x.status !== 200) return;
-      var body, features, best = '', rank = 0, n, p, r;
+      var body, features, best = '', severe = '', rank = 0, severeRank = 0, n, p, r;
       try { body = JSON.parse(x.responseText); } catch (e2) { return; }
       features = body && body.features || [];
       for (n = 0; n < features.length; n++) {
@@ -738,11 +740,280 @@ var LiveWeather = (function () {
         if (p.status && p.status !== 'Actual') continue;
         r = p.severity === 'Extreme' ? 4 : p.severity === 'Severe' ? 3 : p.severity === 'Moderate' ? 2 : 0;
         if (r > rank && p.event) { rank = r; best = String(p.event); }
+        if (r >= 3 && r > severeRank && p.event) { severeRank = r; severe = String(p.event); }
       }
       alertText = best;
+      if (alertSevere !== severe) { alertSevere = severe; skyAt = 0; }
     };
     x.ontimeout = x.onerror = function () { over = true; };
     try { x.send(); } catch (e3) {}
+  }
+
+  // RainViewer's Universal Blue colors (rain, then snow), dBZ then r, g, b. Alpha under 40 is left out.
+  var RADAR = [-6,111,107,95,-5,114,110,97,-4,117,112,98,-3,120,115,100,-2,124,117,101,-1,127,120,103,0,130,123,105,1,133,125,106,2,136,128,108,3,139,130,109,4,142,133,111,5,146,136,113,6,158,147,117,7,170,158,121,8,182,169,126,9,194,180,130,10,206,192,135,11,210,196,139,12,214,200,143,13,218,204,147,14,222,208,151,15,136,221,238,16,108,209,235,17,81,197,232,18,54,186,229,19,27,174,226,20,0,163,224,21,0,154,213,22,0,145,202,23,0,136,191,24,0,127,180,25,0,119,170,26,0,112,163,27,0,105,156,28,0,98,149,29,0,91,142,30,0,85,136,31,0,81,128,32,0,78,120,33,0,74,112,34,0,71,104,35,255,238,0,36,255,224,0,37,255,210,0,38,255,197,0,39,255,183,0,40,255,170,0,41,255,159,0,42,255,149,0,43,255,139,0,44,255,129,0,45,255,68,0,46,242,54,0,47,230,40,0,48,217,27,0,49,205,13,0,50,193,0,0,51,168,0,0,52,143,0,0,53,118,0,0,54,93,0,0,55,255,170,255,56,255,159,255,57,255,149,255,58,255,139,255,59,255,129,255,60,255,119,255,61,255,108,255,62,255,98,255,63,255,88,255,64,255,78,255,65,255,255,255,75,0,255,0,-6,203,255,255,-4,202,255,255,-3,201,255,255,-2,200,255,255,-1,199,255,255,1,198,255,255,2,197,255,255,3,196,255,255,4,195,255,255,6,194,255,255,7,193,255,255,8,192,255,255,9,191,255,255,11,184,248,255,12,178,242,255,13,171,235,255,14,165,229,255,15,159,223,255,16,152,216,255,17,146,210,255,18,139,203,255,19,133,197,255,20,127,191,255,21,120,184,255,22,114,178,255,23,107,171,255,24,101,165,255,25,95,159,255,26,91,155,255,27,88,152,255,28,85,149,255,29,82,146,255,30,79,143,255,31,75,139,255,32,72,136,255,33,69,133,255,34,66,130,255,35,63,127,255,36,59,123,255,37,56,120,255,38,53,117,255,39,50,114,255,40,47,111,255,41,43,107,255,42,40,104,255,43,37,101,255,44,34,98,255,45,31,95,255,46,27,91,255,47,24,88,255,48,21,85,255,49,18,82,255,50,15,79,255,51,12,75,255,52,9,72,255,53,6,69,255,54,2,66,255,55,0,63,255,56,0,59,255,57,0,56,255,58,0,53,255,59,0,50,255,60,0,47,255,61,0,43,255,62,0,40,255,63,0,37,255,64,0,34,255,65,0,31,255,66,0,27,255,67,0,24,255,68,0,21,255,69,0,18,255,70,0,15,255,71,0,12,255,72,0,9,255,73,0,6,255,74,0,2,255,75,0,0,255];
+
+  /** dBZ for one Universal Blue pixel. A clear pixel is 0. A color that isn't in the table is 0 too. */
+  function dbzFromPixel(r, g, b, a) {
+    if (a < 16) return 0;
+    var best = 1600, dbz = null, i, dr, dg, db, d;
+    for (i = 0; i < RADAR.length; i += 4) {
+      dr = RADAR[i + 1] - r;
+      dg = RADAR[i + 2] - g;
+      db = RADAR[i + 3] - b;
+      d = dr * dr + dg * dg + db * db;
+      if (d < best) { best = d; dbz = RADAR[i]; }
+    }
+    return dbz === null ? 0 : dbz;
+  }
+
+  function hasSnow(model, obs) {
+    if ((model >= 71 && model <= 77) || model === 85 || model === 86) return true;
+    var text = obs ? ((obs.weather || '') + ' ' + (obs.text || '')).toLowerCase() : '';
+    return text.indexOf('snow') >= 0 || text.indexOf('sleet') >= 0;
+  }
+
+  function isConvective(model) {
+    return (model >= 80 && model <= 82) || model >= 95;
+  }
+
+  function rainCode(dbz, snow, thunder) {
+    if (thunder) return 95;
+    if (snow) return dbz >= 45 ? 75 : dbz >= 35 ? 73 : 71;
+    if (dbz >= 45) return 65;
+    if (dbz >= 35) return 63;
+    if (dbz < 25) return 51;
+    return 61;
+  }
+
+  function minuteCode(mm, snow) {
+    if (snow) return mm >= 2 ? 75 : mm >= 0.5 ? 73 : 71;
+    if (mm >= 2) return 65;
+    if (mm >= 0.5) return 63;
+    if (mm < 0.2) return 51;
+    return 61;
+  }
+
+  /** A severe warning that should replace the sky. Wind and heat do not. */
+  function alertCode(alert) {
+    var s = String(alert || '').toLowerCase();
+    if (!s) return 0;
+    if (s.indexOf('snow') >= 0 || s.indexOf('blizzard') >= 0 || s.indexOf('ice storm') >= 0 || s.indexOf('winter') >= 0 || s.indexOf('freezing') >= 0 || s.indexOf('sleet') >= 0) return 75;
+    if (s.indexOf('tornado') >= 0 || s.indexOf('thunder') >= 0) return 95;
+    if (s.indexOf('hurricane') >= 0 || s.indexOf('tropical') >= 0 || s.indexOf('flood') >= 0 || s.indexOf('rain') >= 0) return 65;
+    return 0;
+  }
+
+  function obsFresh(obs) {
+    return !!(obs && typeof obs.ageMin === 'number' && obs.ageMin < 45);
+  }
+
+  function obsCode(obs) {
+    if (!obsFresh(obs)) return 0;
+    var weather = String(obs.weather || '').toLowerCase();
+    var text = String(obs.text || '').toLowerCase();
+    var both = weather + ' ' + text;
+    var heavy = obs.intensity === 'heavy' || text.indexOf('heavy') >= 0;
+    var moderate = obs.intensity === 'moderate' || text.indexOf('moderate') >= 0;
+    var vis = typeof obs.visibilityM === 'number' ? obs.visibilityM : null;
+    if (both.indexOf('thunder') >= 0) return 95;
+    if (both.indexOf('snow') >= 0 || both.indexOf('sleet') >= 0) return heavy ? 75 : moderate ? 73 : 71;
+    if (both.indexOf('drizzle') >= 0) return 51;
+    if (both.indexOf('rain') >= 0 || both.indexOf('shower') >= 0) return heavy ? 65 : moderate ? 63 : 61;
+    if ((both.indexOf('fog') >= 0 || both.indexOf('mist') >= 0) && vis !== null && vis < 1000) return 45;
+    if (text.indexOf('partly') >= 0) return 2;
+    if (text.indexOf('cloud') >= 0 || text.indexOf('overcast') >= 0) return 3;
+    if (text.indexOf('clear') >= 0 || text.indexOf('fair') >= 0 || text.indexOf('sunny') >= 0) return 1;
+    return 0;
+  }
+
+  /**
+   * Which code to show. Severe alert, then radar precipitation, then the 15-minute amount, then a fresh
+   * observation, then the model. Fog only when nothing is falling and visibility is low.
+   */
+  function chooseSky(o) {
+    o = o || {};
+    var model = o.modelCode || 0;
+    var obs = o.obs || null;
+    var snow = hasSnow(model, obs);
+    var fromAlert = alertCode(o.alert);
+    var dbz = typeof o.radarDbz === 'number' ? o.radarDbz : null;
+    if (fromAlert) return {code: fromAlert, source: 'alert', dbz: dbz};
+    if (dbz !== null && dbz >= 20) {
+      return {code: rainCode(dbz, snow, isConvective(model) && dbz >= 45), source: 'radar', dbz: dbz};
+    }
+    var mm = typeof o.minuteMm === 'number' ? o.minuteMm : 0;
+    if (mm >= 0.1) return {code: minuteCode(mm, snow), source: 'minutely', dbz: dbz};
+    var fromObs = obsCode(obs);
+    if (fromObs) return {code: fromObs, source: 'obs', dbz: dbz};
+    if (model === 45 || model === 48) {
+      var vis = obsFresh(obs) && typeof obs.visibilityM === 'number' ? obs.visibilityM : null;
+      if (vis !== null && vis < 1000) return {code: model, source: 'model', dbz: dbz};
+      return {code: 3, source: 'model', dbz: dbz};
+    }
+    return {code: model, source: 'model', dbz: dbz};
+  }
+
+  function getJson(url, headers, done) {
+    if (typeof XMLHttpRequest === 'undefined') { done(null); return; }
+    var x = new XMLHttpRequest();
+    var over = false;
+    x.open('GET', url, true);
+    x.timeout = 8000;
+    if (headers) {
+      for (var k in headers) if (headers.hasOwnProperty(k)) {
+        try { x.setRequestHeader(k, headers[k]); } catch (e) {}
+      }
+    }
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4 || over) return;
+      over = true;
+      if (x.status !== 200) { done(null); return; }
+      try { done(JSON.parse(x.responseText)); } catch (e2) { done(null); }
+    };
+    x.ontimeout = x.onerror = function () { if (!over) { over = true; done(null); } };
+    try { x.send(); } catch (e3) { if (!over) { over = true; done(null); } }
+  }
+
+  /** The middle pixel of a RainViewer tile. CORS is open; a tainted canvas fails closed. */
+  function sampleCenter(url, done) {
+    if (typeof Image === 'undefined' || typeof document === 'undefined') { done(null); return; }
+    var img = new Image();
+    var over = false;
+    function fail() { if (!over) { over = true; done(null); } }
+    img.onload = function () {
+      if (over) return;
+      over = true;
+      try {
+        var c = document.createElement('canvas');
+        var w = img.width || 256, h = img.height || 256;
+        c.width = w;
+        c.height = h;
+        var g = c.getContext('2d');
+        g.drawImage(img, 0, 0);
+        var p = g.getImageData((w / 2) | 0, (h / 2) | 0, 1, 1).data;
+        done({r: p[0], g: p[1], b: p[2], a: p[3]});
+      } catch (e) { done(null); }
+    };
+    img.onerror = fail;
+    try { img.crossOrigin = 'anonymous'; } catch (e2) {}
+    img.src = url;
+  }
+
+  function tvRadar(lat, lon, done) {
+    getJson('https://api.rainviewer.com/public/weather-maps.json', null, function (body) {
+      var past = body && body.radar && body.radar.past;
+      if (!past || !past.length || !body.host) { done(null); return; }
+      var frame = past[past.length - 1];
+      if (!frame || !frame.path) { done(null); return; }
+      var url = body.host + frame.path + '/256/7/' + Number(lat).toFixed(4) + '/' + Number(lon).toFixed(4) + '/2/0_0.png';
+      sampleCenter(url, function (px) {
+        if (!px) { done(null); return; }
+        done({ok: true, dbz: dbzFromPixel(px.r, px.g, px.b, px.a), frameTime: frame.time || 0, via: 'tv'});
+      });
+    });
+  }
+
+  function bridgeRadar(lat, lon, done) {
+    if (typeof Prefs === 'undefined' || !Prefs.wizUrl || typeof XMLHttpRequest === 'undefined') { done(null); return; }
+    var root = String(Prefs.wizUrl() || '').replace(/\/+$/, '');
+    if (!root) { done(null); return; }
+    var key = Prefs.wizToken ? Prefs.wizToken() : '';
+    var path = '/weather/radar?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon);
+    var url = root + path + (key ? '&k=' + encodeURIComponent(key) : '');
+    var x = new XMLHttpRequest();
+    var over = false;
+    x.open('GET', url, true);
+    x.timeout = 8000;
+    try { if (key) x.setRequestHeader('X-Bridge-Token', key); } catch (e) {}
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4 || over) return;
+      over = true;
+      if (x.status !== 200) { done(null); return; }
+      var body = null;
+      try { body = JSON.parse(x.responseText); } catch (e2) { done(null); return; }
+      if (!body || typeof body.dbz !== 'number') { done(null); return; }
+      done({ok: true, dbz: body.dbz, frameTime: body.frameTime || 0, via: 'bridge'});
+    };
+    x.ontimeout = x.onerror = function () { if (!over) { over = true; done(null); } };
+    try { x.send(); } catch (e3) { if (!over) { over = true; done(null); } }
+  }
+
+  function readObs(body) {
+    var p = body && body.properties;
+    if (!p || !p.timestamp) return null;
+    var at = Date.parse(p.timestamp);
+    if (!at) return null;
+    var pw = p.presentWeather && p.presentWeather.length ? p.presentWeather[0] : {};
+    var vis = p.visibility && typeof p.visibility.value === 'number' ? p.visibility.value : null;
+    return {
+      ageMin: (Date.now() - at) / 60000,
+      weather: pw.weather || '',
+      intensity: pw.intensity || '',
+      text: p.textDescription || '',
+      visibilityM: vis
+    };
+  }
+
+  function freshObs(lat, lon, done) {
+    var headers = {'Accept': 'application/geo+json'};
+    getJson('https://api.weather.gov/points/' + lat + ',' + lon, headers, function (points) {
+      var stations = points && points.properties && points.properties.observationStations;
+      if (!stations) { done(null); return; }
+      getJson(stations, headers, function (list) {
+        var feat = list && list.features && list.features[0];
+        var id = feat && feat.properties && feat.properties.stationIdentifier;
+        if (!id && feat && feat.id) id = String(feat.id).split('/').pop();
+        if (!id) { done(null); return; }
+        getJson('https://api.weather.gov/stations/' + id + '/observations/latest', headers, function (obs) {
+          done(readObs(obs));
+        });
+      });
+    });
+  }
+
+  function radarFresh(radar) {
+    if (!radar || !radar.ok || typeof radar.dbz !== 'number') return null;
+    if (radar.frameTime && (Date.now() / 1000 - radar.frameTime) > 25 * 60) return null;
+    return radar;
+  }
+
+  /** Radar, the station and the model, at most every 5 minutes. The TV reads the tile; the bridge is the fallback. */
+  function refreshConditions(opts, done) {
+    var now = Date.now();
+    if (skyBusy) { if (done) done(lastSky); return; }
+    if (skyAt && now - skyAt < 5 * 60000 && lastSky) { if (done) done(lastSky); return; }
+    if (!opts || typeof opts.lat !== 'number' || typeof opts.lon !== 'number' || isNaN(opts.lat) || isNaN(opts.lon)) {
+      if (done) done(null);
+      return;
+    }
+    skyBusy = true;
+    var left = 2, radar = null, obs = null;
+    function finish() {
+      if (--left) return;
+      skyBusy = false;
+      var known = radarFresh(radar);
+      var choice = chooseSky({
+        modelCode: opts.modelCode || 0,
+        minuteMm: opts.minuteMm,
+        radarDbz: known ? known.dbz : null,
+        obs: obs,
+        alert: alertSevere
+      });
+      choice.at = Date.now();
+      choice.via = known ? known.via : '';
+      lastSky = choice;
+      skyAt = choice.at - (known || obs ? 0 : 4 * 60000);
+      var msg = choice.source;
+      if (known) msg += ' ' + Math.round(known.dbz) + ' dBZ';
+      if (choice.via) msg += ' via ' + choice.via;
+      note(msg + ' -> ' + choice.code);
+      if (done) done(choice);
+    }
+    tvRadar(opts.lat, opts.lon, function (found) {
+      if (found) { radar = found; finish(); return; }
+      bridgeRadar(opts.lat, opts.lon, function (found2) { radar = found2; finish(); });
+    });
+    freshObs(opts.lat, opts.lon, function (found) { obs = found; finish(); });
   }
 
   return {
@@ -755,8 +1026,14 @@ var LiveWeather = (function () {
     mode: function () { return mode; },
     scene: function (next) { if (next) scene = next; return scene; },
     alert: function () { return alertText; },
+    severeAlert: function () { return alertSevere; },
     noteAlert: function (text) { alertText = text || ''; },
     refreshAlert: refreshAlert,
+    dbzFromPixel: dbzFromPixel,
+    chooseSky: chooseSky,
+    refreshConditions: refreshConditions,
+    sky: function () { return lastSky; },
+    resetSky: function () { skyAt = 0; lastSky = null; skyBusy = false; },
     wake: loopStart,
     strikeSoon: function () { nextBolt = 0; preferSheet = 1; }
   };

@@ -271,6 +271,7 @@ var Data = (function () {
     var off = o.utc_offset_seconds || 0, dl = o.daily, now = Date.now();
     var w = {
       temp: o.current.temperature_2m, feels: o.current.apparent_temperature, code: o.current.weather_code,
+      modelCode: o.current.weather_code,
       isDay: o.current.is_day !== 0, precip: o.current.precipitation,
       wind: o.current.wind_speed_10m, windDir: o.current.wind_direction_10m,
       max: dl.temperature_2m_max[0], min: dl.temperature_2m_min[0],
@@ -332,6 +333,36 @@ var Data = (function () {
     return any ? sum : 0;
   }
 
+  /** Millimetres in the 15-minute step that covers `now`, or null when the forecast doesn't say. */
+  function minuteNow(now) {
+    var s = weather && weather.steps, step = 15 * 60000, i;
+    if (!s) return null;
+    for (i = 0; i < s.length; i++) {
+      if (s[i][0] <= now && now < s[i][0] + step) return s[i].length > 2 ? (s[i][2] || 0) : 0;
+    }
+    return null;
+  }
+
+  /** The sky the radar (or the station) picked. The model code stays on modelCode. */
+  function applySky(choice) {
+    if (!weather || !choice || typeof choice.code !== 'number') return;
+    if (typeof weather.modelCode !== 'number') weather.modelCode = weather.code;
+    var same = weather.code === choice.code && weather.source === choice.source;
+    weather.code = choice.code;
+    weather.source = choice.source;
+    if (typeof choice.dbz === 'number') weather.radarDbz = choice.dbz;
+    var floor = 0;
+    if (choice.source === 'radar' && choice.dbz >= 45) floor = 4;
+    else if (choice.source === 'radar' && choice.dbz >= 35) floor = 1.5;
+    else if (choice.source === 'radar' && choice.dbz >= 20) floor = 0.4;
+    else if (choice.source === 'minutely') {
+      var mm = minuteNow(Date.now());
+      floor = mm >= 2 ? 4 : mm >= 0.5 ? 1.5 : mm >= 0.1 ? 0.4 : 0;
+    }
+    if (floor) weather.precip = Math.max(weather.precip || 0, floor);
+    if (!same) changed();
+  }
+
   function refreshWeather() {
     var now = Date.now();
     // The card can wait half an hour. Live weather, while it's on screen, asks again every few minutes.
@@ -345,6 +376,12 @@ var Data = (function () {
       if (at !== place()) { refreshWeather(); return; }   // another city was picked meanwhile
       if (err) return;
       weather = parseWeather(body);
+      var held = typeof LiveWeather !== 'undefined' && LiveWeather.sky ? LiveWeather.sky() : null;
+      if (weather && held && Date.now() - held.at < 10 * 60000) {
+        weather.code = held.code;
+        weather.source = held.source;
+        if (typeof held.dbz === 'number') weather.radarDbz = held.dbz;
+      }
       weatherAt = Date.now();
       store('weather', {place: at, body: body, at: weatherAt, query: QUERY});
       changed();
@@ -920,11 +957,17 @@ var Data = (function () {
     settingsChanged: function () { pricesAt = 0; refreshPrices(); changed(); },
     findCity: findCity,
     /** Another city picked: its weather now (none shown until it comes). */
-    cityChanged: function () { weather = null; weatherAt = 0; air = null; airAt = 0; airTried = 0; refreshWeather(); refreshAir(); changed(); },
+    cityChanged: function () {
+      weather = null; weatherAt = 0; air = null; airAt = 0; airTried = 0;
+      if (typeof LiveWeather !== 'undefined' && LiveWeather.resetSky) LiveWeather.resetSky();
+      refreshWeather(); refreshAir(); changed();
+    },
     get weather() { return weather; },
     get air() { return air; },
     rainIn: rainIn,
     nextHourMm: function () { return nextHourMm(Date.now()); },
+    minuteNow: function () { return minuteNow(Date.now()); },
+    applySky: applySky,
     get weatherAt() { return weatherAt; },
     prices: prices,
     changes: changes,

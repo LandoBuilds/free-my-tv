@@ -15,11 +15,13 @@ import json
 import os
 import re
 import socket
+import struct
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -263,6 +265,148 @@ def power_action(action):
     return {'power': state, 'ok': False, 'error': 'action'}
 
 
+
+RADAR_COLORS = (
+-6,111,107,95,-5,114,110,97,-4,117,112,98,-3,120,115,100,-2,124,117,101,-1,127,120,103,0,130,123,105,1,133,125,106,2,136,128,108,3,139,130,109,4,142,133,111,5,146,136,113,6,158,147,117,7,170,158,121,8,182,169,126,9,194,180,130,10,206,192,135,11,210,196,139,12,214,200,143,13,218,204,147,14,222,208,151,15,136,221,238,16,108,209,235,17,81,197,232,18,54,186,229,19,27,174,226,20,0,163,224,21,0,154,213,22,0,145,202,23,0,136,191,24,0,127,180,25,0,119,170,26,0,112,163,27,0,105,156,28,0,98,149,29,0,91,142,30,0,85,136,31,0,81,128,32,0,78,120,33,0,74,112,34,0,71,104,35,255,238,0,36,255,224,0,37,255,210,0,38,255,197,0,39,255,183,0,40,255,170,0,41,255,159,0,42,255,149,0,43,255,139,0,44,255,129,0,45,255,68,0,46,242,54,0,47,230,40,0,48,217,27,0,49,205,13,0,50,193,0,0,51,168,0,0,52,143,0,0,53,118,0,0,54,93,0,0,55,255,170,255,56,255,159,255,57,255,149,255,58,255,139,255,59,255,129,255,60,255,119,255,61,255,108,255,62,255,98,255,63,255,88,255,64,255,78,255,65,255,255,255,75,0,255,0,-6,203,255,255,-4,202,255,255,-3,201,255,255,-2,200,255,255,-1,199,255,255,1,198,255,255,2,197,255,255,3,196,255,255,4,195,255,255,6,194,255,255,7,193,255,255,8,192,255,255,9,191,255,255,11,184,248,255,12,178,242,255,13,171,235,255,14,165,229,255,15,159,223,255,16,152,216,255,17,146,210,255,18,139,203,255,19,133,197,255,20,127,191,255,21,120,184,255,22,114,178,255,23,107,171,255,24,101,165,255,25,95,159,255,26,91,155,255,27,88,152,255,28,85,149,255,29,82,146,255,30,79,143,255,31,75,139,255,32,72,136,255,33,69,133,255,34,66,130,255,35,63,127,255,36,59,123,255,37,56,120,255,38,53,117,255,39,50,114,255,40,47,111,255,41,43,107,255,42,40,104,255,43,37,101,255,44,34,98,255,45,31,95,255,46,27,91,255,47,24,88,255,48,21,85,255,49,18,82,255,50,15,79,255,51,12,75,255,52,9,72,255,53,6,69,255,54,2,66,255,55,0,63,255,56,0,59,255,57,0,56,255,58,0,53,255,59,0,50,255,60,0,47,255,61,0,43,255,62,0,40,255,63,0,37,255,64,0,34,255,65,0,31,255,66,0,27,255,67,0,24,255,68,0,21,255,69,0,18,255,70,0,15,255,71,0,12,255,72,0,9,255,73,0,6,255,74,0,2,255,75,0,0,255
+)
+RADAR_CACHE = {}
+
+
+def dbz_from_pixel(r, g, b, a):
+    if a < 16:
+        return 0
+    best, dbz, i = 1600, None, 0
+    while i < len(RADAR_COLORS):
+        dr = RADAR_COLORS[i + 1] - r
+        dg = RADAR_COLORS[i + 2] - g
+        db = RADAR_COLORS[i + 3] - b
+        dist = dr * dr + dg * dg + db * db
+        if dist < best:
+            best, dbz = dist, RADAR_COLORS[i]
+        i += 4
+    return 0 if dbz is None else dbz
+
+
+def _paeth(a, b, c):
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    return b if pb <= pc else c
+
+
+def png_center(data):
+    """RGBA of the center pixel. RainViewer tiles are 8-bit color, sometimes indexed."""
+    if data[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError('png')
+    i = 8
+    idat = b''
+    w = h = bit = ctype = None
+    plte = trns = None
+    while i + 8 <= len(data):
+        ln = struct.unpack('>I', data[i:i + 4])[0]
+        typ = data[i + 4:i + 8]
+        chunk = data[i + 8:i + 8 + ln]
+        if typ == b'IHDR':
+            w, h, bit, ctype = struct.unpack('>IIBB', chunk[:10])
+        elif typ == b'PLTE':
+            plte = chunk
+        elif typ == b'tRNS':
+            trns = chunk
+        elif typ == b'IDAT':
+            idat += chunk
+        elif typ == b'IEND':
+            break
+        i += 12 + ln
+    raw = zlib.decompress(idat)
+    if ctype == 6 and bit == 8:
+        stride, bpp = w * 4, 4
+    elif ctype == 2 and bit == 8:
+        stride, bpp = w * 3, 3
+    elif ctype == 3 and bit == 8:
+        stride, bpp = w, 1
+    elif ctype == 3 and bit == 4:
+        stride, bpp = (w + 1) // 2, 1
+    else:
+        raise ValueError('png')
+    pos = 0
+    prev = bytearray(stride)
+    rows = []
+    for _y in range(h):
+        filt = raw[pos]
+        pos += 1
+        row = bytearray(raw[pos:pos + stride])
+        pos += stride
+        if filt == 1:
+            for k in range(stride):
+                row[k] = (row[k] + (row[k - bpp] if k >= bpp else 0)) & 255
+        elif filt == 2:
+            for k in range(stride):
+                row[k] = (row[k] + prev[k]) & 255
+        elif filt == 3:
+            for k in range(stride):
+                left = row[k - bpp] if k >= bpp else 0
+                row[k] = (row[k] + ((left + prev[k]) // 2)) & 255
+        elif filt == 4:
+            for k in range(stride):
+                a = row[k - bpp] if k >= bpp else 0
+                b = prev[k]
+                c = prev[k - bpp] if k >= bpp else 0
+                row[k] = (row[k] + _paeth(a, b, c)) & 255
+        elif filt != 0:
+            raise ValueError('png')
+        prev = row
+        rows.append(row)
+    x, y = w // 2, h // 2
+    if ctype == 6:
+        o = x * 4
+        return tuple(rows[y][o:o + 4])
+    if ctype == 2:
+        o = x * 3
+        px = rows[y][o:o + 3]
+        return (px[0], px[1], px[2], 255)
+    if bit == 8:
+        idx = rows[y][x]
+    else:
+        byte = rows[y][x // 2]
+        idx = (byte >> 4) & 15 if x % 2 == 0 else byte & 15
+    r, g, b = plte[idx * 3:idx * 3 + 3]
+    a = trns[idx] if trns and idx < len(trns) else 255
+    return (r, g, b, a)
+
+
+def radar_sample(lat, lon):
+    lat, lon = float(lat), float(lon)
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError('place')
+    key = '%.2f,%.2f' % (lat, lon)
+    hit = RADAR_CACHE.get(key)
+    if hit and time.time() - hit['at'] < 120:
+        return hit['body']
+    req = urllib.request.Request(
+        'https://api.rainviewer.com/public/weather-maps.json',
+        headers={'User-Agent': 'FreeMyTV'})
+    with urllib.request.urlopen(req, timeout=8) as res:
+        meta = json.loads(res.read().decode())
+    frame = meta['radar']['past'][-1]
+    url = '%s%s/256/7/%.4f/%.4f/2/0_0.png' % (meta['host'], frame['path'], lat, lon)
+    req = urllib.request.Request(url, headers={'User-Agent': 'FreeMyTV'})
+    with urllib.request.urlopen(req, timeout=8) as res:
+        pixel = png_center(res.read())
+    dbz = dbz_from_pixel(*pixel)
+    if dbz < 20:
+        intensity = 'none'
+    elif dbz < 35:
+        intensity = 'light'
+    elif dbz < 45:
+        intensity = 'moderate'
+    else:
+        intensity = 'heavy'
+    body = {'dbz': dbz, 'intensity': intensity, 'frameTime': frame.get('time') or 0}
+    RADAR_CACHE[key] = {'at': time.time(), 'body': body}
+    return body
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Status only. The path can carry the token, so it is not written.
@@ -342,6 +486,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/health':
             self._json(200, {'ok': True})
+            return
+        if path == '/weather/radar':
+            qs = parse_qs(urlparse(self.path).query)
+            try:
+                self._json(200, radar_sample((qs.get('lat') or [''])[0], (qs.get('lon') or [''])[0]))
+            except Exception:
+                self._json(502, {'dbz': None, 'intensity': 'none', 'frameTime': 0})
             return
         self._json(404, {})
 

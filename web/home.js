@@ -2705,6 +2705,7 @@
     renderQuotes();
     renderCards();
     renderPanels();
+    renderGlance();
     checkNight();
   });
 
@@ -2760,6 +2761,18 @@
   });
   ICloud.boot();
   LiveWeather.boot($('live'));
+  function refreshSky() {
+    if (resting()) return;
+    var lat = parseFloat(Prefs.latitude()), lon = parseFloat(Prefs.longitude()), w = Data.weather;
+    LiveWeather.refreshAlert(lat, lon);
+    LiveWeather.refreshConditions({
+      lat: lat,
+      lon: lon,
+      modelCode: w ? (typeof w.modelCode === 'number' ? w.modelCode : w.code) : 0,
+      minuteMm: Data.minuteNow()
+    }, function (choice) { Data.applySky(choice); });
+  }
+  refreshSky();
   try { if (window.tizen && window.tizen.tvinputdevice) window.tizen.tvinputdevice.registerKey('ColorF0Red'); } catch (e) {}
   if (Prefs.icalUrl()) Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
   setInterval(function () {
@@ -2805,6 +2818,7 @@
       Glance.loadCalendar(Prefs.icalUrl(), function () { renderGlance(); if (ambientOn) tickAmbient(); });
     }
     if (LiveWeather.mode() !== 'off') { pushScene(); LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude()); }
+    refreshSky();
     reportStatus();
     // New photos, and signed addresses that expire. A failure is asked again sooner than a list that arrived.
     if (!resting() && Prefs.icloudAlbum() && (Prefs.icloudSaver() || Prefs.icloudHome())) {
