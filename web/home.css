@@ -218,20 +218,30 @@ body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
   font-weight: 500;
   line-height: 68px;
   color: #6E6E73;
-  -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), background-color 0.17s, box-shadow 0.2s, color 0.17s;
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), background-color 0.17s, box-shadow 0.2s, color 0.17s;
+  -webkit-transition: -webkit-transform 0.08s linear;
+  transition: transform 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
 .tab.on { font-weight: 600; color: #1D1D1F; }
-.tab.focus {
+.tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 34px;
   background: #FFF;
-  color: #1D1D1F;
-  -webkit-transform: scale(1.05);
-  transform: scale(1.05);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.22);
+  opacity: 0;
+  z-index: -1;
+  -webkit-transition: opacity 0.08s linear;
+  transition: opacity 0.08s linear;
 }
+.tab.focus { color: #1D1D1F; -webkit-transform: translateZ(0) scale(1.05); transform: translateZ(0) scale(1.05); }
+.tab.focus::before { opacity: 1; }
 .night #title, .night .tab.on { color: #F5F5F7; }
 .night .tab { color: rgba(245, 245, 247, 0.62); }
-.night .tab.focus { color: #1D1D1F; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4); }
+.night .tab.focus { color: #1D1D1F; }
 
 /* The price line used to sit here. It stays hidden; the glance takes this corner. */
 #quotes {
@@ -328,11 +338,26 @@ body.tinted #wash { opacity: 0.34; }
   background: linear-gradient(rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.5));
   box-shadow: 0 6px 26px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
   color: #1D1D1F;
-  -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, background-color 0.17s;
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, background-color 0.17s;
+  -webkit-transition: -webkit-transform 0.08s linear;
+  transition: transform 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
-.round .sym { position: absolute; left: 20px; top: 20px; width: 28px; height: 28px; }
-.round.focus { background: #FFF; -webkit-transform: scale(1.1); transform: scale(1.1); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24); }
+.round::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 34px;
+  background: #FFF;
+  opacity: 0;
+  -webkit-transition: opacity 0.08s linear;
+  transition: opacity 0.08s linear;
+}
+.round .sym { position: absolute; left: 20px; top: 20px; width: 28px; height: 28px; z-index: 1; }
+.round.focus { -webkit-transform: translateZ(0) scale(1.08); transform: translateZ(0) scale(1.08); color: #1D1D1F; }
+.round.focus::before { opacity: 1; }
 .round .tip {
   position: absolute;
   top: 88px;
@@ -355,7 +380,7 @@ body.tinted #wash { opacity: 0.34; }
   box-shadow: 0 6px 26px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.92);
 }
-.night .round.focus { background: #FFF; color: #1D1D1F; }
+.night .round.focus { color: #1D1D1F; }
 .night .round.focus .tip { color: #F5F5F7; }
 
 /* MARK: - Picks: the card with focus is wide, the others narrow (posters); it grows 5%, rises and its edge lights up. */
@@ -387,9 +412,9 @@ body.tinted #wash { opacity: 0.34; }
   background-size: cover;
   background-position: center;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
-  -webkit-transition: box-shadow 0.22s;
-  transition: box-shadow 0.22s;
 }
+.card.focus { -webkit-transform: translateY(-6px) scale(1.05); transform: translateY(-6px) scale(1.05); z-index: 2; }
+.card.focus .img::after { opacity: 1; }
 /* As Backdrop.card(…, 0): taller than the card, a poster keeps its title and the wide card its photo's top. */
 .card .layer {
   position: absolute;
@@ -512,9 +537,25 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
   overflow: hidden;
   color: #FFF;
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.14);
-  -webkit-transition: -webkit-transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, opacity 0.3s;
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.2s, opacity 0.3s;
+  -webkit-transition: -webkit-transform 0.08s linear, opacity 0.08s linear;
+  transition: transform 0.08s linear, opacity 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
+.tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 4px #FFF;
+  opacity: 0;
+  -webkit-transition: opacity 0.08s linear;
+  transition: opacity 0.08s linear;
+  z-index: 2;
+}
+.tile.focus::before { opacity: 1; }
 .tile img { position: absolute; left: 50%; top: 50%; max-width: 76%; max-height: 62%; -webkit-transform: translate(-50%, -50%); transform: translate(-50%, -50%); }
 /* a logo lifted off the TV's icon (home.js): as large as the tile allows */
 .tile img.logo { width: 70%; height: 50%; max-width: none; max-height: none; object-fit: contain; }
@@ -547,10 +588,9 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
   -webkit-transition: opacity 0.17s;
   transition: opacity 0.17s;
 }
-.tile.focus { -webkit-transform: scale(1.2); transform: scale(1.2); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34); z-index: 2; }
+.tile.focus { -webkit-transform: translateZ(0) scale(1.12); transform: translateZ(0) scale(1.12); z-index: 2; }
 .tile.focus::after { opacity: 1; }
 .night .tile { box-shadow: 0 4px 22px rgba(0, 0, 0, 0.3); }
-.night .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6); }
 .more { position: absolute; width: 17px; height: 17px; color: rgba(0, 0, 0, 0.6); }
 .more.back { -webkit-transform: scaleX(-1); transform: scaleX(-1); }
 .night .more { color: rgba(255, 255, 255, 0.8); }
@@ -578,13 +618,14 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
   border-radius: 20px;
   text-align: center;
   color: #1D1D1F;
-  -webkit-transition: -webkit-transform 0.19s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.19s, background-color 0.14s;
-  transition: transform 0.19s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.19s, background-color 0.14s;
+  -webkit-transition: -webkit-transform 0.08s linear;
+  transition: transform 0.08s linear;
+  -webkit-transform: translateZ(0);
 }
 .key .sym { position: absolute; left: 50%; top: 33px; width: 34px; height: 34px; margin-left: -17px; }
 .key .label { position: absolute; left: 8px; right: 8px; top: 82px; font-size: 23px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .key.off { color: #8E8E93; }
-.key.focus { background: #F5F5F7; color: #1C1C1E; -webkit-transform: scale(1.07); transform: scale(1.07); box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42); z-index: 2; }
+.key.focus { color: #1C1C1E; -webkit-transform: translateZ(0) scale(1.06); transform: translateZ(0) scale(1.06); z-index: 2; }
 .night .key { color: rgba(255, 255, 255, 0.95); }
 .night .key.off { color: rgba(255, 255, 255, 0.42); }
 .night .key.focus { color: #1C1C1E; }
@@ -719,7 +760,8 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
 
 /* MARK: - Dim: a black layer over the picture, for a dark room (panel brightness needs private APIs) */
 
-#dim { z-index: 6; background: #000; opacity: 0; pointer-events: none; -webkit-transition: opacity 0.5s; transition: opacity 0.5s; }
+#hud { position: absolute; left: 24px; top: 24px; z-index: 9; display: none; padding: 10px 14px; background: rgba(0, 0, 0, 0.78); color: #FFF; font: 22px/1.35 sans-serif; border-radius: 10px; }
+#hud.on { display: block; }
 #dim.d1 { opacity: 0.28; }
 #dim.d2 { opacity: 0.42; }
 #dim.d3 { opacity: 0.55; }
@@ -825,8 +867,7 @@ body.content-photos #clock, body.content-weather #clock { display: none; }
 }
 .layered .card .back { -webkit-transition: opacity 0.45s !important; transition: opacity 0.45s !important; }
 .layered #sky canvas { -webkit-transition: opacity 0.8s !important; transition: opacity 0.8s !important; }
-.layered .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34) !important; }
-.layered .night .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6) !important; }
+.layered .tile.focus, .layered .night .tile.focus { box-shadow: none; }
 
 /* Samsungs up to 2 GB (see tv.js): the parts that move lose their soft shadows, which the TV repainted on every frame of
    a move, and what slides is a layer from the start, so a move starts at once. */

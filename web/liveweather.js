@@ -220,7 +220,7 @@ var LiveWeather = (function () {
   var scene = {kind: 'clear', night: false, rate: 0, wind: 0, dir: 0};
   var locs = null, glassLocs = null;
   var nextBolt = -1, flash = 0, bolt = 0, thunderAt = 0, alertText = '', alertSevere = '', alertAt = 0;
-  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false;
+  var skyAt = 0, lastSky = null, skyBusy = false, paused = false, boltSeen = false, skipDraw = false;
   var audio = null, nbuf = null;
   var frameAcc = 0, frameN = 0, frameLast = 0;
   var boltPts = new Array(33);
@@ -633,6 +633,7 @@ var LiveWeather = (function () {
     // Home weather is behind the shelf: 30 fps is enough, and it keeps the remote responsive.
     var gap = (mode === 'overlay' || mode === 'row') ? 33 : 0;
     if (gap && frameLast && now - frameLast < gap) { schedule(frame); return; }
+    if (skipDraw) { skipDraw = false; schedule(frame); return; }
     if (frameLast && mode !== 'overlay' && mode !== 'row') {
       frameAcc += now - frameLast;
       frameN++;
@@ -1040,6 +1041,7 @@ var LiveWeather = (function () {
       if (paused) running = false;
       else if (mode !== 'off') loopStart();
     },
+    skipFrame: function () { skipDraw = true; },
     setMode: setMode,
     mode: function () { return mode; },
     scene: function (next) { if (next) scene = next; return scene; },

@@ -422,7 +422,10 @@
 
   function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ALBUM || st.zone === Z.ABOUT || st.zone === Z.TEXT; }
 
-  function updateFocus() {
+  var settleQueued = false;
+
+  /** Only the focus class. Nothing here reads layout, so the highlight can paint in this frame. */
+  function markFocus() {
     var i, list;
     list = $('tabs').children;
     for (i = 0; i < list.length; i++) {
@@ -432,30 +435,46 @@
     list = $('buttons').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === 3 + i);
     setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= 3);
-    layoutCards();
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
     list = $('tiles').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.SHELF && st.shelf === i);
-    revealShelf();
-    list = document.querySelectorAll('#drawer .key');
+    list = $('drawer').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.DRAWER && st.drawer === i);
-    list = document.querySelectorAll('#apps .cell');
-    for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.APPS && st.grid === i);
-    var rows = Math.max(1, Math.ceil(others.length / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
-    $('apps').lastChild.style.webkitTransform = $('apps').lastChild.style.transform = 'translateY(' + (-first * 239) + 'px)';
-    focusRows($('settings'), st.row, st.zone === Z.SETTINGS);
-    focusRows($('shelfedit'), st.edit, st.zone === Z.EDIT);
-    focusRows($('langpick'), st.lang, st.zone === Z.LANG);
-    if (langHint) langHint.textContent = I18N.digits((st.lang + 1) + ' / ' + languageChoices().length) + '  ·  ' + tr('OK picks, Back cancels.');
-    focusRows($('citypick'), st.city, st.zone === Z.CITY);
-    focusRows($('keypick'), st.key, st.zone === Z.KEY);
-    focusRows($('albumpick'), st.album, st.zone === Z.ALBUM);
-    focusRows($('textpick'), st.text, st.zone === Z.TEXT);
+    if (st.zone === Z.APPS) {
+      list = $('apps').getElementsByClassName('cell');
+      for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.grid === i);
+    }
+    if (st.zone === Z.SETTINGS) focusRows($('settings'), st.row, true);
+    else if (st.zone === Z.EDIT) focusRows($('shelfedit'), st.edit, true);
+    else if (st.zone === Z.LANG) focusRows($('langpick'), st.lang, true);
+    else if (st.zone === Z.CITY) focusRows($('citypick'), st.city, true);
+    else if (st.zone === Z.KEY) focusRows($('keypick'), st.key, true);
+    else if (st.zone === Z.ALBUM) focusRows($('albumpick'), st.album, true);
+    else if (st.zone === Z.TEXT) focusRows($('textpick'), st.text, true);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
+  }
+
+  function settleFocus() {
+    if (st.zone === Z.CARDS || st.zone === Z.TOP) layoutCards();
+    if (st.zone === Z.SHELF) revealShelf();
+    if (st.zone === Z.APPS) {
+      var rows = Math.max(1, Math.ceil(others.length / 5)), r = Math.floor(st.grid / 5), first = Math.max(0, Math.min(rows - 3, r - 1));
+      var grid = $('apps').lastChild;
+      if (grid) grid.style.webkitTransform = grid.style.transform = 'translateY(' + (-first * 239) + 'px)';
+    }
     if (typeof LiveWeather !== 'undefined' && LiveWeather.setPaused) LiveWeather.setPaused(st.zone === Z.DRAWER || sheetOpen());
-    followSoon();
+    if (st.zone === Z.CARDS) followSoon();
+    if (langHint && st.zone === Z.LANG) langHint.textContent = I18N.digits((st.lang + 1) + ' / ' + languageChoices().length) + '  ·  ' + tr('OK picks, Back cancels.');
     reportStatus();
+  }
+
+  function updateFocus() {
+    markFocus();
+    if (settleQueued) return;
+    settleQueued = true;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    raf(function () { settleQueued = false; settleFocus(); });
   }
 
   function focusRows(sheet, index, on) {
@@ -2748,8 +2767,54 @@
 
   // MARK: - Keys
 
+  var hud = null, hudOn = false, hudFrames = 0, hudFps = 0, hudStamp = 0, hudText = '';
+
+  function nowMs() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+
+  function paintHud() {
+    if (!hud) return;
+    var line = 'fps ' + hudFps + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
+    if (hud.textContent !== line) hud.textContent = line;
+  }
+
+  function hudLoop() {
+    if (!hudOn) return;
+    hudFrames++;
+    var now = Date.now();
+    if (!hudStamp) hudStamp = now;
+    if (now - hudStamp >= 500) {
+      hudFps = Math.round(hudFrames * 1000 / (now - hudStamp));
+      hudFrames = 0;
+      hudStamp = now;
+      paintHud();
+    }
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 32); };
+    raf(hudLoop);
+  }
+
+  function toggleHud() {
+    hudOn = !hudOn;
+    if (!hud) {
+      hud = document.createElement('div');
+      hud.id = 'hud';
+      document.body.appendChild(hud);
+    }
+    setClass(hud, 'on', hudOn);
+    if (hudOn) { hudFrames = 0; hudStamp = 0; hudLoop(); }
+  }
+
+  function hudNote(sync, paint) {
+    hudText = 'key ' + Math.round(sync) + ' ms   paint ' + Math.round(paint) + ' ms';
+    paintHud();
+  }
+
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    var t0 = nowMs();
+    if (k === 405) { toggleHud(); e.preventDefault(); return; }
+    if (typeof LiveWeather !== 'undefined' && LiveWeather.skipFrame) LiveWeather.skipFrame();
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
     if (!saverOn && !ambientOn && !sheetOpen() && k === 403) { startScreen(); e.preventDefault(); return; }
     if (typing(k)) return;
@@ -2761,6 +2826,11 @@
     else if (k === TV.keys.back || k === 27 || k === 8) back();
     else return;
     e.preventDefault();
+    if (hudOn) {
+      var sync = nowMs() - t0;
+      var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+      raf(function () { hudNote(sync, nowMs() - t0); });
+    }
   });
   document.addEventListener('mousemove', function () { poke(); });
 
@@ -2906,7 +2976,12 @@
     }, function (choice) { Data.applySky(choice); });
   }
   refreshSky();
-  try { if (window.tizen && window.tizen.tvinputdevice) window.tizen.tvinputdevice.registerKey('ColorF0Red'); } catch (e) {}
+  try {
+    if (window.tizen && window.tizen.tvinputdevice) {
+      window.tizen.tvinputdevice.registerKey('ColorF0Red');
+      window.tizen.tvinputdevice.registerKey('ColorF2Yellow');
+    }
+  } catch (e) {}
   if (Prefs.icalUrl()) Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
   setInterval(function () {
     if (resting() || !Prefs.wizUrl()) return;
