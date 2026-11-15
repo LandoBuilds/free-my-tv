@@ -416,11 +416,11 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ALBUM: 'album', ABOUT: 'about'};
-  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0, album: 0};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ALBUM: 'album', ABOUT: 'about', TEXT: 'text'};
+  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0, album: 0, text: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ALBUM || st.zone === Z.ABOUT; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ALBUM || st.zone === Z.ABOUT || st.zone === Z.TEXT; }
 
   function updateFocus() {
     var i, list;
@@ -451,6 +451,7 @@
     focusRows($('citypick'), st.city, st.zone === Z.CITY);
     focusRows($('keypick'), st.key, st.zone === Z.KEY);
     focusRows($('albumpick'), st.album, st.zone === Z.ALBUM);
+    focusRows($('textpick'), st.text, st.zone === Z.TEXT);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
     followSoon();
   }
@@ -495,30 +496,34 @@
     var buttons = $('buttons');
     buttons.innerHTML = '';
     var own = Prefs.boxInput() !== 'live';
-    var defs = [[own ? 'tv' : 'live_tv', own ? boxLabel() : tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];
-    for (var b = 0; b < 3; b++) {
-      var r = el('button', 'round' + (b === 2 ? ' last' : ''), buttons);
-      startAt(r, 1596 + 88 * b);   // the buttons sit at the end edge of the screen: the right, or the left when mirrored
+    var defs = [
+      ['bedtime', tr('Ambient')],
+      [own ? 'tv' : 'live_tv', own ? boxLabel() : tr('light|Live TV')],
+      ['hdmi', tr('HDMI Inputs')],
+      ['settings', tr('light|Settings')]
+    ];
+    for (var b = 0; b < defs.length; b++) {
+      var r = el('button', 'round' + (b === defs.length - 1 ? ' last' : ''), buttons);
+      startAt(r, 1508 + 88 * b);
       sym(defs[b][0], r);
       el('div', 'tip', r, defs[b][1]);
       hover(r, Z.TOP, 3 + b);
     }
+    renderGlance();
+    renderScenes();
+    if (!currentTint && Prefs.tint()) applyTint(Glance.tintCss(document.body.className.indexOf('night') >= 0 ? 72 : 186, document.body.className.indexOf('night') >= 0 ? 118 : 196, document.body.className.indexOf('night') >= 0 ? 168 : 210));
   }
 
   function renderQuotes() {
-    var q = $('quotes'), coins = Data.activeCoins();
-    q.innerHTML = '';
-    for (var i = 0; i < coins.length; i++) {
-      var item = el('span', 'q', q);
-      coin(coins[i], item);
-      el('span', '', item, Data.compact(Data.prices[coins[i]]));
-    }
+    var q = $('quotes');
+    if (q) q.innerHTML = '';
   }
 
   // MARK: - Picks and background
 
   function renderCards() {
-    var list = Data.picks(TAB_KIND[st.tab]);
+    var picks = Data.picks(TAB_KIND[st.tab]);
+    var list = resumeItems().concat(picks);
     var holder = $('cards');
     setClass(body, 'no-picks', !list.length);
     setClass(body, 'no-key', !Data.hasKey());   // as on Android: no title or tabs that could never show anything
@@ -531,9 +536,13 @@
     for (var c = 0; c < list.length; c++) {
       var p = list[c], card = el('div', 'card', holder);
       var img = el('div', 'img', card);
-      // Narrow: the poster (the backdrop cropped without one); the wide card fades its backdrop in over it, loaded then.
       var poster = el('div', 'layer', img);
-      poster.style.backgroundImage = 'url(' + (p.poster ? Data.image(p.poster, 'w342') : Data.image(p.backdrop, 'w780')) + ')';
+      if (p.resume) {
+        setClass(card, 'resume', true);
+        poster.style.background = '#243044';
+      } else {
+        poster.style.backgroundImage = 'url(' + (p.poster ? Data.image(p.poster, 'w342') : Data.image(p.backdrop, 'w780')) + ')';
+      }
       el('div', 'layer back', img);
       el('div', 'name', card, I18N.name(p.title));
       if (p.meta) el('div', 'meta', card, p.meta);
@@ -541,7 +550,7 @@
     }
     st.card = Math.min(st.card, Math.max(0, list.length - 1));
     if (!list.length && st.zone === Z.CARDS) st.zone = Z.SHELF;
-    backdrop(list.length ? Data.image(list[st.card].backdrop, 'w300') : '');
+    backdrop(list.length && list[st.card] && list[st.card].backdrop ? Data.image(list[st.card].backdrop, 'w300') : '');
     updateFocus();
   }
 
@@ -558,7 +567,7 @@
       n.style.width = w + 'px';
       setClass(n, 'wide', wide);
       setClass(n, 'edge', at < 0 || at > 1740);
-      if (wide && !n.getAttribute('data-back') && cards[i]) {
+      if (wide && !n.getAttribute('data-back') && cards[i] && cards[i].backdrop) {
         n.setAttribute('data-back', '1');
         n.querySelector('.back').style.backgroundImage = 'url(' + Data.image(cards[i].backdrop, 'w1280') + ')';
       }
@@ -599,6 +608,7 @@
       setClass(canvas, 'on', true);
       setClass($(bgFront), 'on', false);
       bgFront = next;
+      sampleTint(canvas);
     };
     if (fit !== undefined) img.onerror = function () { ICloud.noteBroken(); };
     img.src = url;
@@ -655,6 +665,67 @@
     var d = new Date(), c = $('clock');
     c.firstChild.textContent = formatDate('format|h:mm', d.getTime());
     c.lastChild.textContent = formatDate('format|EEEE, MMMM d', d.getTime());
+    renderGlance();
+  }
+
+  function resumeItems() {
+    if (!Prefs.resume() || typeof Glance === 'undefined') return [];
+    return Glance.recent().map(function (r) {
+      var mins = Math.max(1, Math.round((Date.now() - r.at) / 60000));
+      return {id: 'recent:' + r.id, resume: true, appId: r.id, title: r.title, meta: trf('{n} min ago', {n: mins}), backdrop: '', poster: ''};
+    });
+  }
+
+  function renderGlance() {
+    var g = $('glance');
+    if (!g || typeof Glance === 'undefined') return;
+    g.innerHTML = '';
+    el('div', 'when', g, formatDate('format|h:mm', Date.now()));
+    var w = Data.weather;
+    if (w) el('div', 'wx', g, Data.degrees(w.temp) + '  ·  ' + Data.condition(w.code, w.isDay));
+    var ev = Glance.event();
+    if (ev) el('div', 'ev', g, formatDate('format|h:mm', ev.start) + '  ' + ev.title);
+    else if (Prefs.icalUrl() && Glance.eventProblem()) el('div', 'ev', g, tr("Couldn't read the calendar"));
+    else if (Prefs.icalUrl()) el('div', 'ev', g, tr('Nothing coming up'));
+  }
+
+  function renderScenes() {
+    var box = $('scenes');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!Prefs.wizUrl()) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    var scenes = [['movie', tr('Movie')], ['dim', tr('Dim')], ['warm', tr('Warm')], ['bright', tr('Bright')], ['off', tr('All off')]];
+    for (var i = 0; i < scenes.length; i++) {
+      (function (id, label) {
+        var b = el('button', 'scene', box, label);
+        b.onclick = function () { Glance.sendScene(id); };
+      })(scenes[i][0], scenes[i][1]);
+    }
+  }
+
+  var currentTint = '';
+
+  function applyTint(color) {
+    currentTint = color || '';
+    setClass(body, 'tinted', !!currentTint && Prefs.tint());
+    var wash = $('wash');
+    if (wash) wash.style.backgroundColor = currentTint || 'transparent';
+    var tiles = $('tiles') ? $('tiles').children : [], i;
+    for (i = 0; i < tiles.length; i++) {
+      if (!shelf[i] || !shelf[i].color || !currentTint || !Prefs.tint()) tiles[i].style.background = '';
+      else tiles[i].style.background = Glance.mixCss(shelf[i].color, currentTint, 0.4);
+    }
+  }
+
+  function sampleTint(canvas) {
+    if (!Prefs.tint() || !canvas) { applyTint(''); return; }
+    try {
+      var ctx = canvas.getContext('2d'), data = ctx.getImageData(4, 4, 20, 14).data;
+      var r = 0, g = 0, b = 0, n = 0, i;
+      for (i = 0; i < data.length; i += 16) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
+      if (n) applyTint(Glance.tintCss(r / n, g / n, b / n));
+    } catch (e) {}
   }
 
   /** On the minute, so the clock never runs late (the 30-second refresh could, by up to 30 s). */
@@ -703,6 +774,7 @@
     }
     st.shelf = Math.min(st.shelf, Math.max(0, shelf.length - 1));
     placeTiles();
+    if (currentTint) applyTint(currentTint);
   }
 
   /** The row slides (a transform on #tiles, which old TVs animate), and the apps it takes past the glass fade out. */
@@ -746,6 +818,14 @@
     drawerItems.push({label: tr('All Apps'), symbol: 'apps', run: openApps});
     drawerItems.push({label: tr('Home Settings'), symbol: 'settings', run: openSettings});
     if (TV.canOpenSettings) drawerItems.push({label: tr('TV Settings'), symbol: 'tv_settings', run: tvSettings});
+    if (Prefs.wizUrl()) {
+      var lights = [['movie', tr('Movie')], ['dim', tr('Dim')], ['warm', tr('Warm')], ['bright', tr('Bright')], ['off', tr('All off')]];
+      for (var L = 0; L < lights.length; L++) {
+        (function (id, label) {
+          drawerItems.push({label: label, symbol: 'lightbulb', run: function () { Glance.sendScene(id); }});
+        })(lights[L][0], lights[L][1]);
+      }
+    }
     var n = drawerItems.length, gap = 18, groupGap = 56, groups = drawerInputs > 0 && drawerInputs < n ? 2 : 1;
     var tw = Math.min(230, (1760 - Math.max(0, n - groups) * gap - (groups - 1) * groupGap) / Math.max(1, n));
     var xPos = 80;
@@ -927,14 +1007,73 @@
     closeField('citypick');
     closeField('keypick');
     closeField('albumpick');
+    closeField('textpick');
     setClass($('citypick'), 'open', false);
     setClass($('keypick'), 'open', false);
     setClass($('albumpick'), 'open', false);
+    setClass($('textpick'), 'open', false);
     langHint = null;
     st.zone = Z.SHELF;
     updateFocus();
     // Home weather is refused while a sheet is open. Leaving Settings is what turns it on.
     syncLive();
+  }
+
+  var textKind = 'ical';
+
+  function textRows() { return textKind === 'wiz' ? 3 : 2; }
+
+  function renderText() {
+    var box = $('textpick').firstChild;
+    box.innerHTML = '';
+    el('div', 'title', box, textKind === 'wiz' ? tr('Lights') : tr('Calendar'));
+    var list = el('div', 'list', box), holder = el('div', 'rows', list);
+    list.style.height = textRows() * 78 + 'px';
+    if (textKind === 'wiz') {
+      textField(holder, Z.TEXT, Prefs.wizUrl(), tr('Paste the bridge address'), tr('Lights'));
+      var token = textField(holder, Z.TEXT, Prefs.wizToken(), tr('Bridge token'), tr('Bridge token'));
+      token.type = 'password';
+      hover(token.parentNode, Z.TEXT, 1);
+    } else {
+      textField(holder, Z.TEXT, Prefs.icalUrl(), tr('Paste the calendar link'), tr('Calendar'));
+    }
+    var save = el('div', 'row', holder, tr('Save'));
+    hover(save, Z.TEXT, textRows() - 1);
+    el('div', 'hint', box, tr('OK picks, Back cancels.'));
+    updateFocus();
+  }
+
+  function openText(kind) {
+    textKind = kind;
+    setClass($('settings'), 'open', false);
+    st.zone = Z.TEXT;
+    st.text = 0;
+    $('textpick').firstChild.innerHTML = '';
+    renderText();
+    setClass($('textpick'), 'open', true);
+    openField('textpick');
+  }
+
+  function closeText() {
+    closeField('textpick');
+    setClass($('textpick'), 'open', false);
+    openSettings();
+    for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].text === textKind) st.row = i;
+    updateFocus();
+  }
+
+  function saveText() {
+    var fields = $('textpick').querySelectorAll('input');
+    if (textKind === 'wiz') {
+      Prefs.set('wizUrl', fields[0] ? String(fields[0].value || '').replace(/^\s+|\s+$/g, '') : '');
+      Prefs.set('wizToken', fields[1] ? String(fields[1].value || '') : '');
+      renderScenes();
+      renderDrawer();
+    } else {
+      Prefs.set('icalUrl', fields[0] ? String(fields[0].value || '').replace(/^\s+|\s+$/g, '') : '');
+      Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
+    }
+    closeText();
   }
 
   // MARK: - Home Settings
@@ -972,6 +1111,24 @@
         step: function (d) { cycle('liveForce', ['auto', 'clear', 'rain', 'storm', 'snow', 'fog', 'night'], Prefs.liveForce(), d); pushScene(); }},
       {label: tr('Home content'), value: homeShowLabel(),
         step: function (d) { cycle('homeShow', ['picks', 'weather', 'photos'], Prefs.homeShow(), d); applyHomeContent(); }},
+      {label: tr('Ambient'), value: Prefs.ambient() === 'auto' ? tr('Automatic') : tr('Off'),
+        step: function (d) { cycle('ambient', ['off', 'auto'], Prefs.ambient(), d); }},
+      {label: tr('Morning from'), value: I18N.digits(Prefs.ambientHour('ambientMorning', 6)),
+        step: function (d) { Prefs.set('ambientMorning', (Prefs.ambientHour('ambientMorning', 6) + (d || 1) + 24) % 24); }},
+      {label: tr('Day from'), value: I18N.digits(Prefs.ambientHour('ambientDay', 11)),
+        step: function (d) { Prefs.set('ambientDay', (Prefs.ambientHour('ambientDay', 11) + (d || 1) + 24) % 24); }},
+      {label: tr('Evening from'), value: I18N.digits(Prefs.ambientHour('ambientEvening', 17)),
+        step: function (d) { Prefs.set('ambientEvening', (Prefs.ambientHour('ambientEvening', 17) + (d || 1) + 24) % 24); }},
+      {label: tr('Night from'), value: I18N.digits(Prefs.ambientHour('ambientNight', 22)),
+        step: function (d) { Prefs.set('ambientNight', (Prefs.ambientHour('ambientNight', 22) + (d || 1) + 24) % 24); }},
+      {label: tr('Calendar'), value: Prefs.icalUrl() ? tr('Save') : tr('Not set'), opens: true, text: 'ical',
+        step: function (d) { if (d >= 0) openText('ical'); }},
+      {label: tr('Match colors'), toggle: Prefs.tint(),
+        step: function () { Prefs.set('tint', !Prefs.tint()); if (!Prefs.tint()) applyTint(''); }},
+      {label: tr('Continue watching'), toggle: Prefs.resume(),
+        step: function () { Prefs.set('resume', !Prefs.resume()); renderCards(); }},
+      {label: tr('Lights'), value: Prefs.wizUrl() ? tr('Save') : tr('Not set'), opens: true, text: 'wiz',
+        step: function (d) { if (d >= 0) openText('wiz'); }},
       {label: tr('iCloud photos'), value: icloudStatus(), opens: true, icloud: true,
         step: function (d) { if (d >= 0) openAlbum(); }},
       {label: tr('Picks per tab'), value: String(I18N.digits(Prefs.cards())),
@@ -987,7 +1144,7 @@
       {label: tr('Forecast'), value: Prefs.forecast() === 'days' ? tr('Next days') : tr('Next hours'),
         step: function (d) { cycle('forecast', ['hours', 'days'], Prefs.forecast(), d); renderPanels(); }},
       {label: tr('Quotes widget'), toggle: Prefs.quotes(),
-        step: function () { Prefs.set('quotes', !Prefs.quotes()); Data.settingsChanged(); }}
+        step: function () { Prefs.set('quotes', !Prefs.quotes()); Data.settingsChanged(); renderPanels(); }}
     ];
     var names = ['Bitcoin', 'Ethereum', 'Solana', tr('Dollar')];
     var count = Data.currency === 'BRL' ? 4 : 3;
@@ -1717,6 +1874,7 @@
 
   function pickTarget(p) {
     if (!p) return null;
+    if (p.resume) return {app: {id: p.appId, title: p.title}, params: null};
     var via = Prefs.openPicks() === 'nuvio' ? nuvio() : null;
     var app = via || Data.appFor(p.app);
     if (!app) return null;
@@ -1745,6 +1903,7 @@
   function launcher(id, name, params) {
     return function () {
       lookingUp = '';
+      if (typeof Glance !== 'undefined') Glance.noteLaunch(id, name);
       TV.launch(id, params || null, function (ok) {
         if (!ok) toast(trf("Couldn't open {app}.", {app: I18N.name(name || id)}));
       });
@@ -1808,8 +1967,9 @@
     switch (st.zone) {
       case Z.TOP:
         if (st.top < 3) return;
-        if (st.top === 3) { var box2 = boxTV(); if (box2) launcher(box2.id, boxLabel())(); }
-        else if (st.top === 4) { st.zone = Z.SHELF; openDrawer(); st.drawer = firstPort(); updateFocus(); }
+        if (st.top === 3) startScreen();
+        else if (st.top === 4) { var box2 = boxTV(); if (box2) launcher(box2.id, boxLabel())(); }
+        else if (st.top === 5) { st.zone = Z.SHELF; openDrawer(); st.drawer = firstPort(); updateFocus(); }
         else openSettings();
         return;
       case Z.CARDS:
@@ -1842,6 +2002,13 @@
         return;
       case Z.ALBUM:
         activateAlbum();
+        return;
+      case Z.TEXT:
+        if (st.text === textRows() - 1) saveText();
+        else {
+          var inputs = $('textpick').querySelectorAll('input');
+          if (inputs[st.text]) inputs[st.text].focus();
+        }
         return;
       case Z.ABOUT:
         closeAbout();
@@ -1883,7 +2050,7 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(Data.hasKey() ? 0 : 3, Math.min(5, st.top + dx));   // without the picks the tabs can't hold focus
+          st.top = Math.max(Data.hasKey() ? 0 : 3, Math.min(6, st.top + dx));   // without the picks the tabs can't hold focus
           if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
           if (Prefs.homeShow() === 'picks' && cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
@@ -1927,6 +2094,9 @@
           renderAlbum();
         }
         break;
+      case Z.TEXT:
+        if (dy) st.text = Math.max(0, Math.min(textRows() - 1, st.text + dy));
+        break;
     }
     updateFocus();
   }
@@ -1944,6 +2114,7 @@
     if (st.zone === Z.CITY) { closeCities(false); return; }
     if (st.zone === Z.KEY) { if (keyAsking) askRemoveKey(false); else closeKey(); return; }
     if (st.zone === Z.ALBUM) { closeAlbum(); return; }
+    if (st.zone === Z.TEXT) { closeText(); return; }
     if (st.zone === Z.ABOUT) { closeAbout(); return; }
     if (sheetOpen()) { closeSheets(); return; }
     if (st.zone === Z.DRAWER) { closeDrawer(); return; }
@@ -1954,7 +2125,7 @@
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
     node.onmouseover = function () {
-      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ALBUM || zone === Z.ABOUT))) return;
+      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ALBUM || zone === Z.ABOUT || zone === Z.TEXT))) return;
       if (zone === Z.DRAWER && st.zone !== Z.DRAWER) return;
       if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
       if (zone === Z.TOP && index < 3 && !Data.hasKey()) return;   // the tabs are hidden without the picks
@@ -2188,9 +2359,33 @@
     syncLive();
   }
 
+  var ambientGlass = false, ambientKind = '', calendarAt = 0;
+
+  function showMorning() {
+    ambientGlass = true;
+    if (ICloud.count()) showAlbumSaver();
+    else showLiveSaver();
+  }
+
   function showSaver() {
     if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
     else showPickSaver();
+  }
+
+  function startScreen() {
+    var ph = Glance.phase(new Date().getHours(), {
+      morning: Prefs.ambientHour('ambientMorning', 6),
+      day: Prefs.ambientHour('ambientDay', 11),
+      evening: Prefs.ambientHour('ambientEvening', 17),
+      night: Prefs.ambientHour('ambientNight', 22)
+    });
+    if (ph === 'morning') showMorning();
+    else if (ph === 'evening') showAmbient('evening');
+    else if (ph === 'night') showAmbient('night');
+    else if (saverMode() === 'live') showLiveSaver();
+    else if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+    else if (saverMode() === 'clock') showAmbient('clock');
+    else showSaver();
   }
 
   function tickSaverClock(clock) {
@@ -2201,6 +2396,7 @@
 
   function hideSaver() {
     saverOn = false;
+    ambientGlass = false;
     saverGen++;
     clearTimeout(saverTimer);
     setClass($('saver'), 'on', false);
@@ -2234,7 +2430,7 @@
     }
     var row = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
     if (full) LiveWeather.setMode('full', Prefs.liveQuality());
-    else if (saverOn && Prefs.livePhotos()) LiveWeather.setMode('glass', Prefs.liveQuality());
+    else if (saverOn && (Prefs.livePhotos() || ambientGlass)) LiveWeather.setMode('glass', Prefs.liveQuality());
     else if (row) LiveWeather.setMode('row', Prefs.liveQuality());
     else if (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome()) LiveWeather.setMode('overlay', Prefs.liveQuality());
     else LiveWeather.setMode('off');
@@ -2315,8 +2511,10 @@
 
   var ambientOn = false, ambientTimer = 0;
 
-  function showAmbient() {
-    if (ambientOn) return;
+  function showAmbient(kind) {
+    kind = kind || 'clock';
+    if (ambientOn && ambientKind === kind) return;
+    if (ambientOn) { ambientOn = false; clearInterval(ambientTimer); }
     var a = $('ambient');
     a.innerHTML = '';
     var shift = el('div', 'shift', a);
@@ -2325,6 +2523,10 @@
     var side = el('div', 'side', shift);
     el('div', 'temp', side);
     el('div', 'cond', side);
+    if (kind === 'evening') el('div', 'event', shift);
+    ambientKind = kind;
+    setClass(a, 'late', kind === 'night');
+    setClass(a, 'evening', kind === 'evening');
     ambientOn = true;
     setClass(a, 'on', true);
     ambientTimer = setInterval(tickAmbient, 30000);
@@ -2340,6 +2542,8 @@
     // The forecast as it is now (a new one comes every 30 minutes), and only with the weather card on, as on Android.
     a.querySelector('.temp').textContent = w ? Data.degrees(w.temp) : '';
     a.querySelector('.cond').textContent = w ? Data.condition(w.code, w.isDay) : '';
+    var ev = a.querySelector('.event'), item = Glance.event();
+    if (ev) ev.textContent = item ? (formatDate('format|h:mm', item.start) + '  ' + item.title) : (Prefs.icalUrl() ? tr('Nothing coming up') : '');
     // A clock that never moves burns into an OLED: the drift of Android's clock without photos (40 × 26 px, 10 minutes).
     var phase = 2 * Math.PI * (d.getTime() / 1000 % 600) / 600, shift = a.querySelector('.shift');
     shift.style.webkitTransform = shift.style.transform =
@@ -2348,6 +2552,7 @@
 
   function hideAmbient() {
     ambientOn = false;
+    ambientKind = '';
     clearInterval(ambientTimer);
     setClass($('ambient'), 'on', false);
     syncLive();
@@ -2368,6 +2573,7 @@
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
+    if (!saverOn && !ambientOn && !sheetOpen() && k === 403) { startScreen(); e.preventDefault(); return; }
     if (typing(k)) return;
     if (k === TV.keys.left) move(-1, 0);
     else if (k === TV.keys.right) move(1, 0);
@@ -2385,16 +2591,20 @@
    * its Cancel or ↑ ↓ leave the field. Samsung's keyboard sends Done as 65376 and Cancel as 65385. True: handled here.
    */
   function typing(k) {
-    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : st.zone === Z.ALBUM ? 'albumpick' : '';
-    if (!sheet || !typingIn(sheet)) return false;
+    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : st.zone === Z.ALBUM ? 'albumpick' : st.zone === Z.TEXT ? 'textpick' : '';
+    if (!sheet) return false;
+    var inputs = $(sheet).querySelectorAll('input'), typingNow = false, i;
+    for (i = 0; i < inputs.length; i++) if (document.activeElement === inputs[i]) typingNow = true;
+    if (!typingNow) return false;
     if (k === TV.keys.ok || k === 65376) {
       if (st.zone === Z.CITY) searchCity();
       else if (st.zone === Z.KEY) saveKey();
+      else if (st.zone === Z.TEXT) saveText();
       else saveAlbum();
     }
     else if (k === TV.keys.back || k === 27 || k === 65385) { closeField(sheet); updateFocus(); }
     else if (k === TV.keys.up || k === TV.keys.down) { closeField(sheet); move(0, k === TV.keys.up ? -1 : 1); }
-    return true;   // anything else types into the field
+    return true;
   }
 
   // MARK: - Start
@@ -2505,6 +2715,21 @@
   });
   ICloud.boot();
   LiveWeather.boot($('live'));
+  try { if (window.tizen && window.tizen.tvinputdevice) window.tizen.tvinputdevice.registerKey('ColorF0Red'); } catch (e) {}
+  if (Prefs.icalUrl()) Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
+  setInterval(function () {
+    if (resting() || !Prefs.wizUrl()) return;
+    Glance.pullWish(function (w) {
+      if (!w) return;
+      if ((w.homeShow === 'picks' || w.homeShow === 'weather' || w.homeShow === 'photos') && Prefs.homeShow() !== w.homeShow) {
+        Prefs.set('homeShow', w.homeShow);
+        applyHomeContent();
+      }
+      if (w.saver === 'photos' || w.saver === 'clock' || w.saver === 'live') Prefs.set('saver', w.saver);
+      if (w.ambient === 'start' && !saverOn && !ambientOn) startScreen();
+      if (w.ambient === 'off') { hideSaver(); hideAmbient(); }
+    });
+  }, 4000);
   applyHomeContent();
   Data.onChange(function () { if (LiveWeather.mode() !== 'off') pushScene(); });
   fit();
@@ -2524,9 +2749,14 @@
     // Only on screen: behind another app nobody presses our keys, so idleAt grows old and the screensaver would start
     // there, turning photos every 12 s for nothing while Netflix or YouTube plays.
     if (!document.hidden && !saverOn && !ambientOn && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) {
-      if (saverMode() === 'live') showLiveSaver();
+      if (Prefs.ambient() === 'auto') startScreen();
+      else if (saverMode() === 'live') showLiveSaver();
       else if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
-      else if (saverMode() === 'clock') showAmbient(); else showSaver();
+      else if (saverMode() === 'clock') showAmbient('clock'); else showSaver();
+    }
+    if (Prefs.icalUrl() && Date.now() - calendarAt > 15 * 60000) {
+      calendarAt = Date.now();
+      Glance.loadCalendar(Prefs.icalUrl(), function () { renderGlance(); if (ambientOn) tickAmbient(); });
     }
     if (LiveWeather.mode() !== 'off') { pushScene(); LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude()); }
     // New photos, and signed addresses that expire. A failure is asked again sooner than a list that arrived.
@@ -2543,6 +2773,6 @@
 
   // For the browser preview and tests.
   window.FreeMyTV = {state: st, move: move, activate: activate, back: back, showSaver: showSaver, hideSaver: hideSaver, toast: toast,
-    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim, showLive: showLiveSaver, syncLive: syncLive,
-    homeContent: applyHomeContent};
+    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim,     showLive: showLiveSaver, syncLive: syncLive,
+    homeContent: applyHomeContent, startAmbient: startScreen, refresh: function () { renderTop(); renderCards(); renderScenes(); renderGlance(); }};
 })();

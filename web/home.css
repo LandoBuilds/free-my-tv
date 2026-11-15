@@ -198,8 +198,9 @@ body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
 .night .tab { color: rgba(245, 245, 247, 0.62); }
 .night .tab.focus { color: #1D1D1F; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4); }
 
-/* Crypto quotes at the right end of the tab row: a quiet detail. */
+/* The price line used to sit here. It stays hidden; the glance takes this corner. */
 #quotes {
+  display: none;
   position: absolute;
   right: 80px;
   top: 178px;
@@ -218,6 +219,68 @@ body.content-weather #cards, body.content-photos #cards { visibility: hidden; }
 #quotes.hide { opacity: 0; }
 .night #quotes { color: rgba(245, 245, 247, 0.62); }
 .night #quotes svg { fill: rgba(245, 245, 247, 0.55); }
+
+/* Clock, weather and the next calendar event, in the spot the quotes used to take. */
+#glance {
+  position: absolute;
+  right: 80px;
+  top: 160px;
+  width: 640px;
+  text-align: right;
+  color: #1D1D1F;
+}
+#glance .when { font-size: 32px; font-weight: 560; letter-spacing: -0.02em; }
+#glance .wx, #glance .ev { margin-top: 4px; font-size: 22px; font-weight: 500; color: #6E6E73; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.night #glance { color: #F5F5F7; }
+.night #glance .wx, .night #glance .ev { color: rgba(245, 245, 247, 0.72); }
+.rtl #glance { right: auto; left: 80px; text-align: left; }
+
+#wash {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transition: opacity 0.8s;
+  transition: opacity 0.8s;
+}
+body.tinted #wash { opacity: 0.34; }
+
+#scenes {
+  position: absolute;
+  right: 80px;
+  top: 248px;
+  width: 640px;
+  text-align: right;
+  z-index: 2;
+  display: none;
+}
+#scenes .scene {
+  display: inline-block;
+  height: 36px;
+  margin-left: 8px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: rgba(16, 20, 28, 0.72);
+  color: #F5F5F7;
+  font-size: 18px;
+  font-weight: 600;
+}
+.card.resume .img { background: #243044; }
+
+#ambient.late { background: #000; }
+#ambient.late .clock, #ambient.late .temp { opacity: 0.55; }
+#ambient.evening .event {
+  position: absolute;
+  left: 108px;
+  top: 590px;
+  width: 900px;
+  font-size: 36px;
+  font-weight: 500;
+  color: rgba(245, 245, 247, 0.8);
+}
 
 /* Live TV, HDMI Inputs and Settings: glass circles; the focused one turns white, with its name below. */
 .round {

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Free My TV">
+<meta name="theme-color" content="#0e1218">
+<title>Free My TV</title>
+<style>
+  html, body { margin: 0; background: #0e1218; color: #f4f6f8; font: 17px/1.3 -apple-system, BlinkMacSystemFont, sans-serif; }
+  main { max-width: 420px; margin: 0 auto; padding: 22px 18px 40px; }
+  h1 { font-size: 22px; font-weight: 650; margin: 8px 0 4px; }
+  p { color: #9aa3ad; font-size: 14px; margin: 0 0 18px; }
+  h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #8b949e; margin: 22px 0 8px; }
+  button, select, input { font: inherit; color: inherit; border: 0; border-radius: 14px; }
+  .grid { display: block; }
+  button.wide, select, input { display: block; width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 16px 14px; background: #1c2430; text-align: left; }
+  button.wide:active { background: #2c3a4e; }
+  .pad { text-align: center; }
+  .pad button { display: inline-block; width: 30%; margin: 4px 1%; padding: 18px 0; background: #1c2430; text-align: center; border-radius: 14px; }
+  #token { margin-top: 8px; }
+  .ok { color: #8f8; } .bad { color: #f7b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Free My TV</h1>
+  <p>Add this page to your Home Screen. The token is the one from the bridge, kept only on this phone.</p>
+  <input id="token" type="password" placeholder="Bridge token" autocomplete="off">
+  <div id="status"></div>
+  <h2>Screen</h2>
+  <button class="wide" data-wish="homeShow" data-value="picks">Recommendations</button>
+  <button class="wide" data-wish="homeShow" data-value="weather">Live weather</button>
+  <button class="wide" data-wish="homeShow" data-value="photos">Photos</button>
+  <button class="wide" data-wish="ambient" data-value="start">Start ambient</button>
+  <button class="wide" data-wish="ambient" data-value="off">Back to home</button>
+  <h2>Lights</h2>
+  <select id="group"></select>
+  <button class="wide" data-scene="movie">Movie</button>
+  <button class="wide" data-scene="dim">Dim</button>
+  <button class="wide" data-scene="warm">Warm</button>
+  <button class="wide" data-scene="bright">Bright</button>
+  <button class="wide" data-scene="off">All off</button>
+  <h2>Remote</h2>
+  <div class="pad">
+    <div><button data-key="KEY_UP">Up</button></div>
+    <div><button data-key="KEY_LEFT">Left</button><button data-key="KEY_ENTER">OK</button><button data-key="KEY_RIGHT">Right</button></div>
+    <div><button data-key="KEY_DOWN">Down</button></div>
+    <div><button data-key="KEY_RETURN">Back</button></div>
+  </div>
+</main>
+<script>
+(function () {
+  var tokenBox = document.getElementById('token');
+  try { tokenBox.value = localStorage.getItem('fmtv.bridgeToken') || ''; } catch (e) {}
+  tokenBox.onchange = function () { try { localStorage.setItem('fmtv.bridgeToken', tokenBox.value); } catch (e) {} };
+  function token() { return tokenBox.value || ''; }
+  function say(text, ok) {
+    var s = document.getElementById('status');
+    s.className = ok ? 'ok' : 'bad';
+    s.textContent = text || '';
+  }
+  function send(method, path, body, done) {
+    var x = new XMLHttpRequest();
+    var url = path + (path.indexOf('?') >= 0 ? '&' : '?') + 'k=' + encodeURIComponent(token());
+    x.open(method, url, true);
+    x.setRequestHeader('X-Bridge-Token', token());
+    if (body) x.setRequestHeader('Content-Type', 'application/json');
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      if (done) done(x.status, x.responseText);
+    };
+    x.onerror = function () { if (done) done(0, ''); };
+    x.send(body ? JSON.stringify(body) : null);
+  }
+  function wish(key, value) {
+    var body = {};
+    body[key] = value;
+    send('POST', '/tv/wish', body, function (status) { say(status === 200 ? 'Sent' : 'Not sent', status === 200); });
+  }
+  function scene(name) {
+    var group = document.getElementById('group').value;
+    send('POST', '/lights/scene', {scene: name, group: group}, function (status) {
+      say(status === 200 ? name : 'Lights did not answer', status === 200);
+    });
+  }
+  function key(name) {
+    send('POST', '/tv/key', {key: name}, function (status) { say(status === 200 ? '' : 'The TV did not take the key', status === 200); });
+  }
+  document.body.onclick = function (e) {
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    if (t.getAttribute('data-wish')) wish(t.getAttribute('data-wish'), t.getAttribute('data-value'));
+    else if (t.getAttribute('data-scene')) scene(t.getAttribute('data-scene'));
+    else if (t.getAttribute('data-key')) key(t.getAttribute('data-key'));
+  };
+  send('GET', '/lights', null, function (status, text) {
+    var sel = document.getElementById('group'), data, names, i, o;
+    sel.innerHTML = '';
+    o = document.createElement('option'); o.value = ''; o.textContent = 'All rooms'; sel.appendChild(o);
+    if (status !== 200) return;
+    try { data = JSON.parse(text); } catch (e) { return; }
+    names = data.groups || [];
+    for (i = 0; i < names.length; i++) {
+      if (!names[i] || names[i] === 'All') continue;
+      o = document.createElement('option');
+      o.value = names[i];
+      o.textContent = names[i];
+      sel.appendChild(o);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -99,6 +99,21 @@ var Prefs = (function () {
       var s = pick('homeShow', 'picks');
       return s === 'weather' || s === 'photos' ? s : 'picks';
     },
+    /** 'off' leaves the screensaver as it was. 'auto' picks morning, day, evening or night. */
+    ambient: function () { return pick('ambient', 'off') === 'auto' ? 'auto' : 'off'; },
+    ambientHour: function (name, fallback) {
+      var n = parseInt(pick(name, fallback), 10);
+      return isNaN(n) || n < 0 || n > 23 ? fallback : n;
+    },
+    /** The calendar address, typed on the TV. Never written to the log. */
+    icalUrl: function () { return String(pick('icalUrl', '')).trim(); },
+    /** The Mac bridge, and the token that opens it. The token is never written to the log. */
+    wizUrl: function () { return String(pick('wizUrl', '')).trim(); },
+    wizToken: function () { return String(pick('wizToken', '')); },
+    /** Tiles pick up a little of the photo or the sky. */
+    tint: function () { return pick('tint', true) !== false; },
+    /** Apps opened from this screen, in front of the picks. Tizen has no playback progress to show. */
+    resume: function () { return pick('resume', true) !== false; },
     /** Dimming over the picture, for a dark room: 'off', 'low', 'medium', 'high' or 'auto' (medium at night). */
     dim: function () { return pick('dim', 'off'); },
     /** The weather card's forecast: 'hours' (the next 6 hours) or 'days' (the next 5 days). */

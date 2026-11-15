@@ -396,6 +396,34 @@ reference (fix them by hand); the others were machine-made, and corrections from
   Arabic for now (a TV in Arabic stays in English there). Hebrew and Persian aren't there yet.
 - **Limits:** Chinese, Japanese, Korean, Hindi and Arabic are drawn with the TV's system font (Inter has no such letters).
 
+## Ambient, the top bar, and lights
+
+On LG and Samsung, *Home Settings* → *Ambient* set to Automatic changes what the idle screen becomes. Morning (from the hour you pick) is the shared album with the weather over it, or the live sky if there is no album. Day is the screensaver you already chose. Evening is a clock, the forecast and the next thing on your calendar. Late night is a dim clock. The hours are *Morning from*, *Day from*, *Evening from* and *Night from*. The bedtime button at the top right, and the red colour button when the TV allows it, start that screen at once. Any key comes back home.
+
+The line under the round buttons is the time, the current weather and the next calendar event. The old price counters are not shown. *Home Settings* → *Calendar* is where the calendar address goes (an `https` link ending in `.ics`). It stays on the TV and is never written to the log. If it cannot be read, the line says so and does not show the address.
+
+*Continue watching* lists apps you opened from this screen, newest first, with how long ago. Tizen does not tell another app what is playing or how far a title has got, so there is no progress bar and no real resume point. *Now playing* is not shown for the same reason.
+
+*Match colors* tints the shelf from the photo behind it.
+
+Lights need a small bridge on a Mac on the same network, because the TV cannot send the UDP the bulbs use.
+
+```bash
+mkdir -p ~/.wiz
+printf '%s\n' 'group Living' '192.168.86.21 aabbccddeeff' > ~/.wiz/bulbs.txt
+printf '%s\n' 'choose-a-long-token' > ~/.wiz/token
+python3 tools/wiz_bridge.py --tv 192.168.86.69
+```
+
+The phone page is `http://<the Mac's address>:8787/`. Add it to the iPhone Home Screen. The token from `~/.wiz/token` is typed once on the phone. On the TV, *Home Settings* → *Lights* gets `http://<the Mac>:8787` and the same token. Movie, Dim, Warm, Bright and All off are on the home screen and in the drawer. A line `group Name` in `bulbs.txt` names the bulbs under it. To start the bridge at login:
+
+```bash
+python3 tools/wiz_bridge.py --install-login --tv 192.168.86.69
+launchctl load -w ~/Library/LaunchAgents/io.freemytv.wizbridge.plist
+```
+
+The TV's keys from the phone need `pip3 install samsungtvws`. The first press asks you to allow the Mac on the TV. Without that library the lights and the screen buttons still work.
+
 ## Privacy
 
 
