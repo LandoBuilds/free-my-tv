@@ -215,8 +215,9 @@ var Data = (function () {
       if (x.readyState !== 4 || over) return;
       over = true;
       if (x.status !== 200) { done(new Error(x.status === 401 ? 'TMDB rejected the key' : 'HTTP ' + x.status)); return; }
-      var json;
+      var json, parseAt = Date.now();
       try { json = JSON.parse(x.responseText); } catch (e) { done(e); return; }
+      if (typeof Pace !== 'undefined') Pace.note('json-parse', Date.now() - parseAt);
       done(null, json);
     };
     x.ontimeout = x.onerror = function () { if (!over) { over = true; done(new Error('no connection')); } };

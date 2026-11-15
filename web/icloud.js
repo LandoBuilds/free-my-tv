@@ -132,7 +132,7 @@ var ICloud = (function () {
       p = list[i];
       if (!p || p.mediaAssetType === 'video') continue;
       d = pickDerivative(p.derivatives, target);
-      var homeD = pickDerivative(p.derivatives, 1280);
+      var homeD = pickDerivative(p.derivatives, 640);
       if (!d || !p.photoGuid) continue;
       out.push({id: String(p.photoGuid), checksum: d.checksum,
         homeChecksum: homeD && homeD.checksum !== d.checksum ? homeD.checksum : '',
@@ -273,7 +273,7 @@ var ICloud = (function () {
         url = String(url).replace(/\$\{f\}/g, 'photo.jpg');
         var choice = {url: url, w: width, h: height, edge: edge};
         if (edge >= target && (!best || edge < bestEdge)) { best = choice; bestEdge = edge; }
-        if (edge >= 1280 && (!homeBest || edge < homeEdge)) { homeBest = choice; homeEdge = edge; }
+        if (edge >= 640 && (!homeBest || edge < homeEdge)) { homeBest = choice; homeEdge = edge; }
         if (!fallback || edge > fallbackEdge) { fallback = choice; fallbackEdge = edge; }
       }
       choice = best || fallback;
@@ -493,9 +493,13 @@ var ICloud = (function () {
   }
 
   function writeCache(hash, album) {
-    try {
-      localStorage.setItem('fmtv.icloud', JSON.stringify({h: hash, at: Date.now(), title: album.title || '', photos: album.photos}));
-    } catch (e) {}
+    setTimeout(function () {
+      var t0 = Date.now();
+      try {
+        localStorage.setItem('fmtv.icloud', JSON.stringify({h: hash, at: Date.now(), title: album.title || '', photos: album.photos}));
+      } catch (e) {}
+      if (typeof Pace !== 'undefined') Pace.note('icloud-store', Date.now() - t0);
+    }, 0);
   }
 
   function clearCache() {

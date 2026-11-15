@@ -138,7 +138,11 @@ var Glance = (function () {
       if (inflight[slot] === x) inflight[slot] = null;
       if (!x.status) return;
       var parsed = null;
-      if (x.status === 200) { try { parsed = JSON.parse(x.responseText); } catch (e3) { parsed = {}; } }
+      if (x.status === 200) {
+        var parseAt = Date.now();
+        try { parsed = JSON.parse(x.responseText); } catch (e3) { parsed = {}; }
+        if (typeof Pace !== 'undefined') Pace.note('bridge-json', Date.now() - parseAt);
+      }
       if (done) done(parsed);
     };
     x.onerror = x.ontimeout = function () {

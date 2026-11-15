@@ -642,8 +642,9 @@
       return;
     }
     var img = borrowImage();
-    img.onload = function () {
-      if (bgUrl !== key) return;
+    function decoded() {
+      if (bgUrl !== key) { releaseImage(img); return; }
+      var t0 = Date.now();
       var canvas = $(next), ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
       if (fit === undefined) ctx.drawImage(img, 0, 0, w, h);
       else {
@@ -654,14 +655,16 @@
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
       }
+      if (typeof Pace !== 'undefined') Pace.note('photo-draw', Date.now() - t0);
       setClass(canvas, 'on', true);
       setClass($(bgFront), 'on', false);
       bgFront = next;
       sampleTint(canvas);
       releaseImage(img);
-    };
+    }
     if (fit !== undefined) img.onerror = function () { ICloud.noteBroken(); releaseImage(img); };
     img.src = url;
+    afterDecode(img, decoded);
   }
 
   var homeTimer = 0, homeIndex = 0;
@@ -2606,17 +2609,34 @@
     el('div', 'cap', info);
   }
 
+  function afterDecode(img, done) {
+    var t0 = Date.now();
+    function finish() {
+      if (typeof Pace !== 'undefined') Pace.note('photo-decode', Date.now() - t0);
+      done();
+    }
+    if (img.decode) {
+      var pending = img.decode();
+      if (pending && pending.then) { pending.then(finish, finish); return; }
+    }
+    if (img.complete && img.width) { finish(); return; }
+    img.onload = finish;
+  }
+
   function drawContain(canvas, img, w, h) {
-    var ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d'), t0 = Date.now();
     if (!ctx) return;
-    canvas.width = w;
-    canvas.height = h;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
     var iw = img.width || 1, ih = img.height || 1;
     var scale = Math.min(w / iw, h / ih);
     var dw = Math.round(iw * scale), dh = Math.round(ih * scale);
     ctx.fillStyle = '#1c2430';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(img, Math.round((w - dw) / 2), Math.round((h - dh) / 2), dw, dh);
+    if (typeof Pace !== 'undefined') Pace.note('photo-draw', Date.now() - t0);
   }
 
   function preloadBanner(photo) {
@@ -2624,7 +2644,7 @@
     if (!url) return;
     if (bannerReady && bannerReady.url === url) return;
     var img = borrowImage();
-    img.onload = function () {
+    function decoded() {
       setTimeout(function () {
         if (bannerReady && bannerReady.url === url) { releaseImage(img); return; }
         var c = document.createElement('canvas');
@@ -2632,9 +2652,10 @@
         bannerReady = {url: url, canvas: c};
         releaseImage(img);
       }, 0);
-    };
+    }
     img.onerror = function () { releaseImage(img); };
     img.src = url;
+    afterDecode(img, decoded);
     try { if (img.decode) img.decode(); } catch (e) {}
   }
 
@@ -2693,7 +2714,7 @@
     }
     if (bannerReady && bannerReady.url === shown) { reveal(bannerReady.canvas); return; }
     var img = borrowImage();
-    img.onload = function () {
+    function decoded() {
       setTimeout(function () {
         var c = document.createElement('canvas');
         drawContain(c, img, paneWidth(photo.w || img.width, photo.h || img.height), 352);
@@ -2701,9 +2722,10 @@
         reveal(c);
         releaseImage(img);
       }, 0);
-    };
+    }
     img.onerror = function () { ICloud.noteBroken(); releaseImage(img); };
     img.src = shown;
+    afterDecode(img, decoded);
     try { if (img.decode) img.decode(); } catch (e2) {}
   }
 
@@ -2833,8 +2855,16 @@
   function paintHud() {
     if (!hud) return;
     var rain = (typeof LiveWeather !== 'undefined' && LiveWeather.stats) ? LiveWeather.stats() : null;
+    var slow = (typeof Pace !== 'undefined') ? Pace.read() : null;
+    var gapWhen = '';
+    if (rain && rain.gapAt) {
+      var gd = new Date(rain.gapAt);
+      function z2(n) { return n < 10 ? '0' + n : '' + n; }
+      gapWhen = ' @' + z2(gd.getHours()) + ':' + z2(gd.getMinutes()) + ':' + z2(gd.getSeconds());
+    }
     var line = 'ui ' + hudFps + '   rain ' + hudRain
-      + (rain ? '   reinit ' + rain.inits + '   gap ' + rain.gap + ' ms' : '')
+      + (rain ? '   reinit ' + rain.inits + '   gap ' + rain.gap + ' ms' + gapWhen : '')
+      + (slow && slow.ms ? '\n' + slow.label + ' ' + slow.ms + ' ms' : '')
       + (hudText ? '   ' + hudText : '') + '\nyellow key hides this';
     if (hud.textContent !== line) hud.textContent = line;
   }
@@ -3046,6 +3076,7 @@
   } catch (e) {}
   if (Prefs.icalUrl()) Glance.loadCalendar(Prefs.icalUrl(), renderGlance);
   setInterval(function () {
+    var pollAt = Date.now();
     if (resting() || !Prefs.wizUrl()) return;
     reportStatus();
     Glance.pullWish(function (w) {
@@ -3058,6 +3089,7 @@
       if (w.ambient === 'start' && !saverOn && !ambientOn) startScreen();
       if (w.ambient === 'off') { hideSaver(); hideAmbient(); }
     });
+    if (typeof Pace !== 'undefined') Pace.note('bridge-poll', Date.now() - pollAt);
   }, 12000);
   applyHomeContent();
   Data.onChange(function () { if (LiveWeather.mode() !== 'off') pushScene(); });
