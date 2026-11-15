@@ -835,6 +835,7 @@
     var parts = [], rain = Data.rainIn(Date.now());
     // 0: it rains now, which the line above says; -1: no rain in the two hours ahead; null: the forecast doesn't reach.
     if (rain > 0) parts.push(trf('Rain in ~{time}', {time: trf('{n} min', {n: Math.max(5, Math.round(rain / 5) * 5)})}));
+    if (typeof w.feels === 'number' && Math.abs(w.feels - w.temp) >= 2) parts.push(trf('Feels like {temp}', {temp: Data.degrees(w.feels)}));
     if (w.uv >= 3 && w.isDay) parts.push(trf('UV {n}', {n: Math.round(w.uv)}));   // the day's highest, so not at night
     var air = Data.air;
     // 51 is where the US AQI says moderate: good air is what a weather card needn't spell out.
@@ -955,8 +956,18 @@
         }},
       {label: tr('Dim'), value: dimName(),
         step: function (d) { cycle('dim', ['off', 'low', 'medium', 'high', 'auto'], Prefs.dim(), d); applyDim(); }},
-      {label: tr('Screensaver'), value: saverMode() === 'clock' ? tr('Clock') : tr('Photos'),
-        step: function (d) { cycle('saver', ['photos', 'clock'], saverMode(), d); }},
+      {label: tr('Screensaver'), value: saverLabel(),
+        step: function (d) { cycle('saver', ['photos', 'clock', 'live'], saverMode(), d); syncLive(); }},
+      {label: tr('Home weather'), toggle: Prefs.liveHome(),
+        step: function () { Prefs.set('liveHome', !Prefs.liveHome()); syncLive(); }},
+      {label: tr('Weather on photos'), toggle: Prefs.livePhotos(),
+        step: function () { Prefs.set('livePhotos', !Prefs.livePhotos()); syncLive(); }},
+      {label: tr('Weather detail'), value: liveQualityLabel(),
+        step: function (d) { cycle('liveQuality', ['low', 'medium', 'high'], Prefs.liveQuality(), d); syncLive(); }},
+      {label: tr('Thunder'), toggle: Prefs.liveSound(),
+        step: function () { Prefs.set('liveSound', !Prefs.liveSound()); }},
+      {label: tr('Preview weather'), value: liveForceLabel(),
+        step: function (d) { cycle('liveForce', ['auto', 'clear', 'rain', 'storm', 'snow', 'fog', 'night'], Prefs.liveForce(), d); pushScene(); }},
       {label: tr('iCloud photos'), value: icloudStatus(), opens: true, icloud: true,
         step: function (d) { if (d >= 0) openAlbum(); }},
       {label: tr('Picks per tab'), value: String(I18N.digits(Prefs.cards())),
@@ -1990,6 +2001,27 @@
   /** "photos" (the picks' photos, as it always was) or "clock": what the screen shows when nobody touches it. */
   function saverMode() { return Prefs.saver(); }
 
+  function saverLabel() {
+    var m = saverMode();
+    return m === 'clock' ? tr('Clock') : m === 'live' ? tr('Live weather') : tr('Photos');
+  }
+
+  function liveQualityLabel() {
+    var q = Prefs.liveQuality();
+    return q === 'low' ? tr('dim|Low') : q === 'high' ? tr('dim|High') : tr('dim|Medium');
+  }
+
+  function liveForceLabel() {
+    var f = Prefs.liveForce();
+    if (f === 'rain') return tr('Rain');
+    if (f === 'storm') return tr('Thunderstorms');
+    if (f === 'snow') return tr('Snow');
+    if (f === 'fog') return tr('Fog');
+    if (f === 'clear') return tr('Clear');
+    if (f === 'night') return tr('Clear night');
+    return tr('Automatic');
+  }
+
   /** Dim, as the person picked it: off, low, medium, high, or automatic (medium from 22:00 to 07:00). */
   function dimName() {
     var v = Prefs.dim();
@@ -2069,6 +2101,7 @@
     }
     setClass(s, 'on', true);
     next();
+    syncLive();
   }
 
   /** Where a slow zoom starts and ends. Fill moves further; fit stays gentle so the letterbox isn't cropped away. */
@@ -2143,6 +2176,7 @@
     }
     setClass(s, 'on', true);
     advance();
+    syncLive();
   }
 
   function showSaver() {
@@ -2161,6 +2195,64 @@
     saverGen++;
     clearTimeout(saverTimer);
     setClass($('saver'), 'on', false);
+    syncLive();
+  }
+
+  /** The forecast, as drops and a sky. Full screen when the screensaver is Live weather; otherwise only the drops. */
+  function pushScene() {
+    var w = Data.weather, force = Prefs.liveForce();
+    var code = w ? w.code : 0, day = w ? w.isDay : true;
+    var mm = w ? Data.nextHourMm() : null;
+    if ((mm === null || mm === 0) && w && w.precip) mm = w.precip;
+    LiveWeather.scene({
+      kind: LiveWeather.kind(code, force),
+      night: LiveWeather.night(day, force),
+      rate: LiveWeather.rate(mm, LiveWeather.kind(code, force) === 'rain' || LiveWeather.kind(code, force) === 'storm' || LiveWeather.kind(code, force) === 'snow'),
+      wind: w && w.wind || 0,
+      dir: w && w.windDir || 0
+    });
+    renderLiveInfo();
+  }
+
+  function syncLive() {
+    var full = saverOn && saverMode() === 'live';
+    var over = !full && !ambientOn && !sheetOpen() && ((saverOn && Prefs.livePhotos()) || (!saverOn && Prefs.liveHome()));
+    if (document.hidden || resting()) { LiveWeather.setMode('off'); setClass($('liveinfo'), 'on', false); return; }
+    if (full) LiveWeather.setMode('full', Prefs.liveQuality());
+    else if (saverOn && Prefs.livePhotos()) LiveWeather.setMode('glass', Prefs.liveQuality());
+    else if (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome()) LiveWeather.setMode('overlay', Prefs.liveQuality());
+    else LiveWeather.setMode('off');
+    pushScene();
+    setClass($('liveinfo'), 'on', full);
+    if (full || over) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
+  }
+
+  function renderLiveInfo() {
+    var box = $('liveinfo'), w = Data.weather;
+    if (!box) return;
+    box.innerHTML = '';
+    if (!w) { el('div', 'cond', box, tr('No weather data right now.')); return; }
+    el('div', 'temp', box, Data.degrees(w.temp));
+    el('div', 'cond', box, Data.condition(w.code, w.isDay));
+    var feels = typeof w.feels === 'number' ? trf('Feels like {temp}', {temp: Data.degrees(w.feels)}) : '';
+    var meta = (feels ? feels + '   ' : '') + trf('H:{max}', {max: Data.degrees(w.max)}) + '   ' + trf('L:{min}', {min: Data.degrees(w.min)});
+    el('div', 'meta', box, meta);
+    var mm = Data.nextHourMm();
+    if (mm > 0) el('div', 'meta', box, trf('{n} mm in the next hour', {n: Math.round(mm * 10) / 10}));
+    var alert = LiveWeather.alert();
+    if (alert) el('div', 'alert', box, alert);
+    if (Prefs.liveForce() !== 'auto') el('div', 'meta', box, tr('Preview') + ' · ' + liveForceLabel());
+  }
+
+  function showLiveSaver() {
+    hideAmbient();
+    saverOn = true;
+    saverPick = null;
+    var s = $('saver');
+    s.innerHTML = '';
+    resetSaverChrome();
+    setClass(s, 'on', true);
+    syncLive();
   }
 
   // MARK: - The clock screensaver: a clock, the date and the weather, drifting slowly for OLED panels
@@ -2181,6 +2273,7 @@
     setClass(a, 'on', true);
     ambientTimer = setInterval(tickAmbient, 30000);
     tickAmbient();
+    syncLive();
   }
 
   function tickAmbient() {
@@ -2201,6 +2294,7 @@
     ambientOn = false;
     clearInterval(ambientTimer);
     setClass($('ambient'), 'on', false);
+    syncLive();
   }
 
   function poke(ok) {
@@ -2332,7 +2426,7 @@
     // relaunch) shows the home screen, never a screensaver that started while the app was out of sight.
     hideSaver();
     hideAmbient();
-    if (document.hidden) return;
+    if (document.hidden) { syncLive(); return; }
     idleAt = Date.now();
     TV.noteChannel();   // back from the viewer: the antenna channel it played, for Live TV
     if (TV.name === 'tizen') { renderClock(); checkNight(); applyDim(); }   // what resting() left as it was
@@ -2345,7 +2439,7 @@
   checkNight();   // now, from the last forecast: not after the TV lists its apps, with the day look until then
   // LG's screensaver waits only when ours will show: not under a sheet (ours waits there), and not without photos.
   TV.holdScreenSaver(function () {
-    return !sheetOpen() && (saverMode() === 'clock' || saverPhotos().length > 0 || (Prefs.icloudSaver() && ICloud.count() > 0));
+    return !sheetOpen() && (saverMode() === 'clock' || saverMode() === 'live' || saverPhotos().length > 0 || (Prefs.icloudSaver() && ICloud.count() > 0));
   });
   ICloud.onChange(function () {
     if (st.zone === Z.SETTINGS) renderSettings();
@@ -2353,6 +2447,8 @@
     if (Prefs.icloudHome() && ICloud.count()) startAlbumBackground();
   });
   ICloud.boot();
+  LiveWeather.boot($('live'));
+  Data.onChange(function () { if (LiveWeather.mode() !== 'off') pushScene(); });
   fit();
   renderTop();
   applyDim();
@@ -2370,9 +2466,11 @@
     // Only on screen: behind another app nobody presses our keys, so idleAt grows old and the screensaver would start
     // there, turning photos every 12 s for nothing while Netflix or YouTube plays.
     if (!document.hidden && !saverOn && !ambientOn && !sheetOpen() && Date.now() - idleAt > SAVER_AFTER) {
-      if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
+      if (saverMode() === 'live') showLiveSaver();
+      else if (Prefs.icloudSaver() && ICloud.count()) showAlbumSaver();
       else if (saverMode() === 'clock') showAmbient(); else showSaver();
     }
+    if (LiveWeather.mode() !== 'off') { pushScene(); LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude()); }
     // New photos, and signed addresses that expire. A failure is asked again sooner than a list that arrived.
     if (!resting() && Prefs.icloudAlbum() && (Prefs.icloudSaver() || Prefs.icloudHome())) {
       var wait = ICloud.problem() ? 2 * 60000 : 30 * 60000;
@@ -2384,5 +2482,5 @@
 
   // For the browser preview and tests.
   window.FreeMyTV = {state: st, move: move, activate: activate, back: back, showSaver: showSaver, hideSaver: hideSaver, toast: toast,
-    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim};
+    showAmbient: showAmbient, hideAmbient: hideAmbient, applyDim: applyDim, showLive: showLiveSaver, syncLive: syncLive};
 })();

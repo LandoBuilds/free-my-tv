@@ -29,6 +29,7 @@ Open source. Built with Claude Code. One button to undo.
 - **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
 - **A screensaver to match.** Full-screen photos of the picks with a big glass clock. On LG and Samsung, *Home Settings* → *Screensaver* can make it a large clock with the weather instead, drifting slowly so it doesn't burn into OLED screens. Optionally (*Watch from the screensaver*, in Home Settings), OK opens the title on screen in its app, and any other button just closes it.
 - **Your iCloud album** (LG and Samsung). *Home Settings* → *iCloud photos*: paste a shared album link and the screensaver can play it, with a crossfade or a slow zoom, shuffled or in order. The same photos can sit behind the home screen, dimmed, if you turn that on. It stays off until you do.
+- **Live weather** (LG and Samsung). *Home Settings* → *Screensaver* → *Live weather* plays the real forecast: rain, snow, fog, clouds, a clear day or a clear night, and lightning in a thunderstorm. The same animation can sit quietly on the home screen or over the photos. It starts from Cedar Park, Texas, in °F, until you pick a city.
 - **Dimming for a dark room** (LG and Samsung). *Home Settings* → *Dim* darkens Free My TV's own screens, not the apps you open: low, medium, high, or automatic (medium from 22:00 to 07:00). Off until you pick it.
 - **Your own photos** (Google TV and Android TV). Send them from your computer (up to 100): the screensaver shows them, and without picks one is the home screen's background each hour.
 - **Fast.** 60 fps, every frame in 16.6 ms, on the TV's own chip. The home screen uses 96 MB of memory instead of 242 MB (−60%).<br><sub>Measured on a 98″ TCL Google TV running Android 14.</sub>
@@ -258,6 +259,14 @@ On a Samsung or LG TV, Free My TV can play a shared iCloud album: full-screen on
 The link stays in the TV's own settings. It is not part of the app you install, and it is not written to the log. Videos in the album are skipped. The list is refreshed about every half hour, because Apple's picture addresses expire and because new photos should show up. If the link is wrong, the album is empty, or the TV is offline, the screensaver and the background stay as they were and *iCloud photos* says why.
 
 Apple only answers these album calls to its own website. On LG, Free My TV asks through its own small service on the TV, so that limit doesn't apply. On Samsung the app asks directly; the package already allows the connection. The photos themselves load as pictures either way.
+
+### Live weather (LG and Samsung)
+
+*Home Settings* → *Screensaver* → *Live weather* fills the screen with the forecast already on the weather card: Open-Meteo, the same source, asked a little more often while this is on. Rain falls harder when more rain is due in the next hour, and the wind leans it. Snow, fog, drifting clouds, a sun, or stars and a moon follow the code and the time of day. A thunderstorm adds flashes. Strikes also come when a severe thunderstorm warning from the US National Weather Service covers the spot. *Thunder* (off until you turn it on) is a quiet rumble with each flash.
+
+*Home weather* and *Weather on photos* lay a lighter version over the home screen or the photos. Both stay off until you turn them on. *Weather detail* is Low, Medium or High: fewer drops on a TV that is working hard. *Preview weather* forces clear, rain, a storm, snow, fog or a clear night, so you can see each one; Automatic goes back to the forecast.
+
+Until you pick a city, a build without one uses Cedar Park, Texas, in °F. *Home Settings* → *City* changes it, and *Temperature* changes the unit. If the forecast can't be reached, the screensaver stays a calm sky and says so.
 
 ### Your Plex library (optional)
 

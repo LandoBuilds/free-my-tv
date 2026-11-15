@@ -45,14 +45,15 @@ var Place = (function () {
 
   var tz = zone(TV.zone()), set = CONFIG.latitude !== '' && CONFIG.latitude !== undefined;
   var country = (CONFIG.tmdbRegion || (tz ? tz.country : '') || 'US').toUpperCase();
+  // A build without a city starts in Cedar Park, Texas (this fork's home), in °F. Home Settings → City still wins.
   return {
-    lat: set ? CONFIG.latitude : tz ? tz.lat : '40.7128',
-    lon: set ? CONFIG.longitude : tz ? tz.lon : '-74.0060',
-    city: CONFIG.city || (!set && tz ? tz.name : ''),
+    lat: set ? CONFIG.latitude : '30.5052',
+    lon: set ? CONFIG.longitude : '-97.8203',
+    city: CONFIG.city || (set ? (tz ? tz.name : '') : 'Cedar Park'),
     country: country,
     currency: (CONFIG.currency || (country === 'BR' ? 'BRL' : EURO.test(country) ? 'EUR' : 'USD')).toUpperCase(),
-    /** Fahrenheit for TVs in the US (by their time zone, or their language when it doesn't tell). */
-    fahrenheit: tz ? tz.country === 'US' : /-US$/i.test(navigator.language || '')
+    /** Fahrenheit for TVs in the US, and for the Cedar Park default. */
+    fahrenheit: set ? (tz ? tz.country === 'US' : /-US$/i.test(navigator.language || '')) : true
   };
 })();
 
@@ -72,7 +73,27 @@ var Prefs = (function () {
     /** OK on the screensaver opens the title it shows, in its app; any other key only closes it (off by default). */
     saverWatch: function () { return pick('saverWatch', false) === true; },
     /** What the screensaver shows: 'photos' (the picks' photos, as it always has) or 'clock' (a clock and the weather). */
-    saver: function () { return pick('saver', 'photos') === 'clock' ? 'clock' : 'photos'; },
+    /** 'photos', 'clock', or 'live' (the animated forecast). */
+    saver: function () {
+      var s = pick('saver', 'photos');
+      return s === 'clock' || s === 'live' ? s : 'photos';
+    },
+    /** Drops and clouds over the home screen. Off until turned on. */
+    liveHome: function () { return pick('liveHome', false) === true; },
+    /** The same, over the photo screensaver and a shared album. Off until turned on. */
+    livePhotos: function () { return pick('livePhotos', false) === true; },
+    /** A quiet rumble with each flash. Off until turned on. */
+    liveSound: function () { return pick('liveSound', false) === true; },
+    /** How many drops the canvas keeps: 'low', 'medium' or 'high'. */
+    liveQuality: function () {
+      var q = pick('liveQuality', 'medium');
+      return q === 'low' || q === 'high' ? q : 'medium';
+    },
+    /** 'auto' follows the forecast. The others are a preview: clear, rain, storm, snow, fog, night. */
+    liveForce: function () {
+      var f = pick('liveForce', 'auto');
+      return f === 'clear' || f === 'rain' || f === 'storm' || f === 'snow' || f === 'fog' || f === 'night' ? f : 'auto';
+    },
     /** Dimming over the picture, for a dark room: 'off', 'low', 'medium', 'high' or 'auto' (medium at night). */
     dim: function () { return pick('dim', 'off'); },
     /** The weather card's forecast: 'hours' (the next 6 hours) or 'days' (the next 5 days). */
@@ -207,7 +228,7 @@ var Data = (function () {
   // Both forecasts in one answer, the next 48 hours and today plus 5 days: Home Settings → Forecast switches without
   // asking again, and offline too. 14 steps of 15 minutes tell the card whether rain comes in the next two hours, even
   // from a forecast 30 minutes old (where the time zone is off by half an hour, they start up to 45 minutes back).
-  var QUERY = '&current=temperature_2m,weather_code,is_day'
+  var QUERY = '&current=temperature_2m,apparent_temperature,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m'
       + '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code,uv_index_max'
       + '&minutely_15=precipitation,precipitation_probability&forecast_minutely_15=14'
       + '&hourly=temperature_2m,weather_code,is_day&timezone=auto&forecast_days=6&forecast_hours=48';
@@ -229,7 +250,9 @@ var Data = (function () {
     if (!o || !o.current) return null;
     var off = o.utc_offset_seconds || 0, dl = o.daily, now = Date.now();
     var w = {
-      temp: o.current.temperature_2m, code: o.current.weather_code, isDay: o.current.is_day !== 0,
+      temp: o.current.temperature_2m, feels: o.current.apparent_temperature, code: o.current.weather_code,
+      isDay: o.current.is_day !== 0, precip: o.current.precipitation,
+      wind: o.current.wind_speed_10m, windDir: o.current.wind_direction_10m,
       max: dl.temperature_2m_max[0], min: dl.temperature_2m_min[0],
       uv: dl.uv_index_max ? dl.uv_index_max[0] : null,
       sunrise: localTime(dl.sunrise[0], off), sunset: localTime(dl.sunset[0], off), hours: [], days: []
@@ -242,7 +265,7 @@ var Data = (function () {
       for (var k = 0; k < mr.time.length; k++) {
         var pr = mr.precipitation_probability ? mr.precipitation_probability[k] || 0 : 0;
         var mm = mr.precipitation ? mr.precipitation[k] || 0 : 0;
-        w.steps.push([localTime(mr.time[k], off), pr >= 50 || mm >= 0.2]);
+        w.steps.push([localTime(mr.time[k], off), pr >= 50 || mm >= 0.2, mm]);
       }
     }
     var hr = o.hourly;
@@ -276,9 +299,25 @@ var Data = (function () {
     return s[s.length - 1][0] + STEP >= end ? -1 : null;
   }
 
+  /** Millimetres Open-Meteo expects in the next hour, from the 15-minute steps, or null when they don't reach. */
+  function nextHourMm(now) {
+    var s = weather && weather.steps, end = now + 3600000, sum = 0, any = false, i;
+    if (!s) return null;
+    for (i = 0; i < s.length; i++) {
+      if (s[i][0] + 15 * 60000 <= now) continue;
+      if (s[i][0] >= end) break;
+      if (s[i].length > 2 && s[i][2]) { sum += s[i][2]; any = true; }
+    }
+    if (!any && s.length && s[s.length - 1][0] < end) return null;
+    return any ? sum : 0;
+  }
+
   function refreshWeather() {
     var now = Date.now();
-    if (fetchingWeather || (now - weatherAt < 30 * 60000 && now >= weatherAt)) return;
+    // The card can wait half an hour. Live weather, while it's on screen, asks again every few minutes.
+    var live = Prefs.saver() === 'live' || Prefs.liveHome() || Prefs.livePhotos();
+    var every = live ? 5 * 60000 : 30 * 60000;
+    if (fetchingWeather || (now - weatherAt < every && now >= weatherAt)) return;
     fetchingWeather = true;
     var at = place();
     getMeteo('api.open-meteo.com/v1/forecast?latitude=' + Prefs.latitude() + '&longitude=' + Prefs.longitude() + QUERY, function (err, body) {
@@ -865,6 +904,7 @@ var Data = (function () {
     get weather() { return weather; },
     get air() { return air; },
     rainIn: rainIn,
+    nextHourMm: function () { return nextHourMm(Date.now()); },
     get weatherAt() { return weatherAt; },
     prices: prices,
     changes: changes,

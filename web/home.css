@@ -76,10 +76,31 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* MARK: - Moving parts: the top fades and everything rises when the drawer opens. */
 
 /* Each part is its own stack, so a focused tile (z-index) never shows over the drawer, a sheet or the screensaver. */
+#live { z-index: 1; pointer-events: none; visibility: hidden; }
+#live.on { visibility: visible; }
+#live.full, #live.glass { z-index: 5; }
 #home { z-index: 1; }
 #drawer { z-index: 2; }
 .sheet { z-index: 3; }
 #saver { z-index: 4; }
+#liveinfo {
+  position: absolute;
+  left: 80px;
+  bottom: 80px;
+  z-index: 6;
+  visibility: hidden;
+  padding: 22px 36px 26px;
+  border-radius: 36px;
+  color: #FFF;
+  background: -webkit-linear-gradient(top, rgba(20, 24, 32, 0.55), rgba(20, 24, 32, 0.38));
+  background: linear-gradient(rgba(20, 24, 32, 0.55), rgba(20, 24, 32, 0.38));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+#liveinfo.on { visibility: visible; }
+#liveinfo .temp { font-size: 92px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
+#liveinfo .cond { margin-top: 6px; font-size: 32px; font-weight: 500; }
+#liveinfo .meta { margin-top: 8px; font-size: 24px; color: rgba(255, 255, 255, 0.82); }
+#liveinfo .alert { margin-top: 12px; font-size: 24px; font-weight: 600; color: #FFD59A; }
 
 #home, #drawer {
   -webkit-transition: -webkit-transform 0.38s cubic-bezier(0.32, 0.72, 0.2, 1), opacity 0.28s;

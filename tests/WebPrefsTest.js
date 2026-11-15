@@ -96,5 +96,20 @@ expect(prefs({}).icloudInterval(), 10, 'ten seconds');
 expect(prefs({icloudInterval: 30}).icloudInterval(), 30, 'thirty seconds');
 expect(prefs({icloudInterval: 7}).icloudInterval(), 10, 'not one of the steps');
 
+expect(prefs({}).saver(), 'photos', 'the screensaver stays the photos');
+expect(prefs({saver: 'clock'}).saver(), 'clock', 'the clock screensaver');
+expect(prefs({saver: 'live'}).saver(), 'live', 'live weather');
+expect(prefs({saver: 'nope'}).saver(), 'photos', 'not a screensaver');
+expect(prefs({}).liveHome(), false, 'no weather over the home screen');
+expect(prefs({liveHome: true}).liveHome(), true, 'weather over the home screen');
+expect(prefs({}).livePhotos(), false, 'no weather over the photos');
+expect(prefs({}).liveSound(), false, 'thunder stays quiet');
+expect(prefs({}).liveQuality(), 'medium', 'medium detail');
+expect(prefs({liveQuality: 'low'}).liveQuality(), 'low', 'fewer drops');
+expect(prefs({liveQuality: 'huge'}).liveQuality(), 'medium', 'not a detail');
+expect(prefs({}).liveForce(), 'auto', 'the real forecast');
+expect(prefs({liveForce: 'storm'}).liveForce(), 'storm', 'a preview storm');
+expect(prefs({liveForce: 'wind'}).liveForce(), 'auto', 'not a preview');
+
 if (failures) process.exit(1);
 console.log('WebPrefsTest: all checks passed.');
