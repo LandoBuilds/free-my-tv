@@ -266,15 +266,31 @@ var LiveWeather = (function () {
     return Math.sin(x * Math.PI);
   }
 
+  function note(msg) {
+    try { console.log('FreeMyTV weather: ' + msg); } catch (e) {}
+  }
+
   function compile(type, src) {
     var sh = gl.createShader(type);
     gl.shaderSource(sh, src);
     gl.compileShader(sh);
     if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-      try { console.log(gl.getShaderInfoLog(sh)); } catch (e) {}
+      var log = '';
+      try { log = gl.getShaderInfoLog(sh) || ''; } catch (e) {}
+      note('compile ' + (type === gl.FRAGMENT_SHADER ? 'fragment' : 'vertex') + ' ' + String(log).slice(0, 180));
       return null;
     }
     return sh;
+  }
+
+  function fragmentSource() {
+    var body = FS.replace(/^precision mediump float;\n/, '');
+    var prec = 'precision mediump float;\n';
+    try {
+      var fmt = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+      if (fmt && fmt.precision > 0) prec = 'precision highp float;\n';
+    } catch (e) {}
+    return prec + body;
   }
 
   function program(fs) {
@@ -285,7 +301,12 @@ var LiveWeather = (function () {
     gl.attachShader(p, vs);
     gl.attachShader(p, fsh);
     gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return null;
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      var log = '';
+      try { log = gl.getProgramInfoLog(p) || ''; } catch (e2) {}
+      note('link ' + String(log).slice(0, 180));
+      return null;
+    }
     return p;
   }
 
@@ -305,6 +326,19 @@ var LiveWeather = (function () {
     return ok ? {tex: tex, fb: fb, w: w, h: h} : null;
   }
 
+  function loseGL() {
+    gl = null;
+    prog = null;
+    glassProg = null;
+    target = null;
+    if (!canvas || !canvas.parentNode || typeof document === 'undefined') return;
+    // A canvas that already has a WebGL context cannot take a 2D one. Swap the element.
+    var fresh = canvas.cloneNode(false);
+    canvas.parentNode.replaceChild(fresh, canvas);
+    canvas = fresh;
+    try { ctx = fresh.getContext('2d'); } catch (e) { ctx = null; }
+  }
+
   function initGL(q) {
     if (!canvas) return false;
     var spec = sizeFor(q);
@@ -317,11 +351,15 @@ var LiveWeather = (function () {
       target = null;
     }
     if (!gl) {
-      try { gl = canvas.getContext('webgl', {antialias: false, alpha: true}) || canvas.getContext('experimental-webgl'); } catch (e) { gl = null; }
-      if (!gl) return false;
-      prog = program(FS);
+      // alpha:false: Tizen 6 drops a transparent WebGL canvas, so Home weather never covered the poster.
+      try {
+        gl = canvas.getContext('webgl', {alpha: false, antialias: false, premultipliedAlpha: false})
+          || canvas.getContext('experimental-webgl', {alpha: false, antialias: false, premultipliedAlpha: false});
+      } catch (e) { gl = null; }
+      if (!gl) { note('no WebGL'); return false; }
+      prog = program(fragmentSource());
       glassProg = program(GLASS);
-      if (!prog) { gl = null; return false; }
+      if (!prog) { note('shader failed, using canvas'); loseGL(); return false; }
       quad = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, quad);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -645,14 +683,21 @@ var LiveWeather = (function () {
       mode = 'off';
       running = false;
       canvas.className = 'layer';
+      if (boltCanvas) boltCanvas.className = 'layer';
       return;
     }
     quality = q || quality || 'medium';
     var use = forcedQ || quality;
     if (!gl && !ctx) {
-      if (!initGL(use)) ctx = canvas.getContext('2d');
-    } else if (canvas.width !== sizeFor(use).w) {
+      if (!initGL(use) && !ctx) {
+        try { ctx = canvas.getContext('2d'); } catch (e2) { ctx = null; }
+        if (!ctx) note('no draw');
+      }
+    } else if (gl && canvas.width !== sizeFor(use).w) {
       initGL(use);
+    } else if (ctx && canvas.width !== sizeFor(use).w) {
+      canvas.width = sizeFor(use).w;
+      canvas.height = sizeFor(use).h;
     }
     mode = next;
     canvas.className = 'layer on ' + next;
@@ -661,6 +706,7 @@ var LiveWeather = (function () {
       boltCanvas.width = canvas.width;
       boltCanvas.height = canvas.height;
     }
+    note(next + (gl ? ' webgl' : (ctx ? ' canvas' : ' undrawn')));
     loopStart();
   }
 

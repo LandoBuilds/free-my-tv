@@ -933,6 +933,8 @@
     langHint = null;
     st.zone = Z.SHELF;
     updateFocus();
+    // Home weather is refused while a sheet is open. Leaving Settings is what turns it on.
+    syncLive();
   }
 
   // MARK: - Home Settings
@@ -2224,7 +2226,12 @@
   function syncLive() {
     var full = saverOn && saverMode() === 'live';
     var over = !full && !ambientOn && !sheetOpen() && ((saverOn && Prefs.livePhotos()) || (!saverOn && Prefs.liveHome()));
-    if (document.hidden || resting()) { LiveWeather.setMode('off'); setClass($('liveinfo'), 'on', false); return; }
+    if (document.hidden || resting()) {
+      LiveWeather.setMode('off');
+      setClass($('liveinfo'), 'on', false);
+      setClass(body, 'weather-home', false);
+      return;
+    }
     var row = !saverOn && !ambientOn && !sheetOpen() && Prefs.homeShow() === 'weather';
     if (full) LiveWeather.setMode('full', Prefs.liveQuality());
     else if (saverOn && Prefs.livePhotos()) LiveWeather.setMode('glass', Prefs.liveQuality());
@@ -2232,6 +2239,7 @@
     else if (!saverOn && !ambientOn && !sheetOpen() && Prefs.liveHome()) LiveWeather.setMode('overlay', Prefs.liveQuality());
     else LiveWeather.setMode('off');
     pushScene();
+    setClass(body, 'weather-home', LiveWeather.mode() === 'overlay');
     setClass($('liveinfo'), 'on', full || row);
     setClass($('liveinfo'), 'tucked', row);
     if (full || over || row) LiveWeather.refreshAlert(Prefs.latitude(), Prefs.longitude());
@@ -2478,6 +2486,7 @@
     idleAt = Date.now();
     TV.noteChannel();   // back from the viewer: the antenna channel it played, for Live TV
     if (TV.name === 'tizen') { renderClock(); checkNight(); applyDim(); }   // what resting() left as it was
+    syncLive();   // a start that happened while the page was hidden never reached the weather
     loadApps(function () { renderShelf(); renderDrawer(); updateFocus(); Data.refresh(); });
   });
 

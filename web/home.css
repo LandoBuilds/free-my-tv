@@ -77,8 +77,11 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* Each part is its own stack, so a focused tile (z-index) never shows over the drawer, a sheet or the screensaver. */
 #live { z-index: 1; pointer-events: none; visibility: hidden; }
-#live.on { visibility: visible; }
+#live.on { visibility: visible; background-color: #10141c; }
 #live.full, #live.glass, #livebolt.full, #livebolt.glass { z-index: 5; }
+/* Home weather sits on the sky and under the shelf. Hiding the photo keeps a see-through canvas from leaving the poster up. */
+#live.overlay, #livebolt.overlay { z-index: 1; }
+body.weather-home #sky { visibility: hidden; }
 #live.row, #livebolt.row {
   left: 80px;
   top: 262px;
